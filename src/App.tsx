@@ -94,14 +94,31 @@ function App() {
     // Show browser push notification if supported and user has granted permission
     if ('Notification' in window && globalThis.Notification.permission === 'granted') {
       try {
-        new globalThis.Notification(notification.title || 'New Alert', {
+        const notificationOptions = {
           body: notification.message || 'You have a new notification',
-          icon: '/favicon.ico', // You can customize this
+          icon: '/favicon.ico',
           badge: '/favicon.ico',
           tag: notification.id, // Prevents duplicate notifications
           requireInteraction: notification.severity === 'high',
           silent: !soundEnabled,
-        });
+          data: {
+            notificationId: notification.id,
+            severity: notification.severity,
+            timestamp: notification.timestamp
+          },
+          actions: [
+            {
+              action: 'view',
+              title: 'View'
+            },
+            {
+              action: 'dismiss', 
+              title: 'Dismiss'
+            }
+          ]
+        };
+
+        new globalThis.Notification(notification.title || 'New Alert', notificationOptions);
       } catch (error) {
         console.error('Error showing browser notification:', error);
       }
@@ -233,6 +250,27 @@ function App() {
     }
   }, [session]);
   
+  // --- PWA Notification Setup ---
+  useEffect(() => {
+    // Register service worker for PWA notifications
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/sw.js')
+        .then((registration) => {
+          console.log('Service Worker registered:', registration);
+        })
+        .catch((error) => {
+          console.error('Service Worker registration failed:', error);
+        });
+    }
+
+    // Request notification permission on app load
+    if ('Notification' in window && globalThis.Notification.permission === 'default') {
+      globalThis.Notification.requestPermission().then((permission) => {
+        console.log('Notification permission:', permission);
+      });
+    }
+  }, []);
+
   // --- Push Notification Subscription Effect ---
   const saveSubscription = useCallback(async (subscription: PushSubscription) => {
     if (!session) return;
