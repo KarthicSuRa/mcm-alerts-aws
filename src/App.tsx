@@ -1,3 +1,5 @@
+
+
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { LandingPage } from './pages/LandingPage';
 import { SupabaseLoginPage } from './pages/SupabaseLoginPage';
@@ -8,7 +10,7 @@ import { HowItWorksPage } from './pages/HowItWorksPage';
 import { Sidebar } from './components/layout/Sidebar';
 import { SettingsModal } from './components/layout/SettingsModal';
 import { NotificationToast } from './components/ui/NotificationToast';
-import { Theme, Notification as AppNotification, Severity, NotificationStatus, SystemStatusData, Session, Comment, NotificationUpdatePayload, Topic, Database } from './types';
+import { Theme, Notification, Severity, NotificationStatus, SystemStatusData, Session, Comment, NotificationUpdatePayload, Topic, Database } from './types';
 import { supabase } from './lib/supabaseClient';
 import { ThemeContext } from './contexts/ThemeContext';
 import ErrorBoundary from './components/ui/ErrorBoundary';
@@ -17,6 +19,7 @@ type NotificationFromDB = Database['public']['Tables']['notifications']['Row'];
 type CommentFromDB = Database['public']['Tables']['comments']['Row'];
 type TopicFromDB = Database['public']['Tables']['topics']['Row'];
 type SubscriptionFromDB = Database['public']['Tables']['topic_subscriptions']['Row'];
+
 
 function App() {
   const [theme, setTheme] = useState<Theme>('light');
@@ -29,10 +32,12 @@ function App() {
   // Settings State
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [snoozedUntil, setSnoozedUntil] = useState<Date | null>(null);
+  const [isPushEnabled, setIsPushEnabled] = useState(false);
+  const [isPushLoading, setIsPushLoading] = useState(true);
 
-  const [notifications, setNotifications] = useState<AppNotification[]>([]);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
   const [topics, setTopics] = useState<Topic[]>([]);
-  const [toasts, setToasts] = useState<AppNotification[]>([]);
+  const [toasts, setToasts] = useState<Notification[]>([]);
 
   const systemStatus: SystemStatusData = useMemo(() => ({
     service: 'Ready',
@@ -40,41 +45,6 @@ function App() {
     push: 'Supported',
     subscription: 'Active',
   }), []);
-
-  // Request notification permission on app load
-  useEffect(() => {
-    if ('Notification' in window && Notification.permission === 'default') {
-      Notification.requestPermission();
-    }
-  }, []);
-
-  // Helper function to handle new notifications (sound + toast + browser notification)
-  const handleNewNotificationAlert = useCallback((notification: AppNotification) => {
-    // Check if alerts are snoozed
-    if (snoozedUntil && new Date() < snoozedUntil) {
-      console.log("Alerts are snoozed. Notification alert blocked.");
-      return;
-    }
-
-    // Add toast
-    addToast(notification);
-
-    // Play sound if enabled
-    if (soundEnabled) {
-      const audio = new Audio('/alert.wav');
-      audio.play().catch(e => console.error("Error playing sound:", e));
-    }
-
-    // Show browser notification if permission granted
-    if (window.Notification && Notification.permission === 'granted') {
-      new window.Notification('New MCM Alert', {
-        body: `${notification.title}: ${notification.message}`,
-        icon: '/icons/icon-192x192.png',
-        tag: `notification-${notification.id}`, // Prevents duplicate notifications
-        requireInteraction: notification.severity === 'high'
-      });
-    }
-  }, [soundEnabled, snoozedUntil]);
 
   // --- Auth Effect ---
   useEffect(() => {
@@ -134,7 +104,7 @@ function App() {
                     }))
                 };
             });
-            setNotifications(transformedData as AppNotification[]);
+            setNotifications(transformedData as Notification[]);
         }
 
         // Fetch topics and user subscriptions
@@ -160,14 +130,11 @@ function App() {
       const notificationChannel = supabase
         .channel('public:notifications')
         .on<NotificationFromDB>('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications' }, payload => {
-            const newNotification = {...payload.new, comments: [] } as AppNotification;
+            const newNotification = {...payload.new, comments: [] } as Notification;
             setNotifications(prev => [newNotification, ...prev]);
-            
-            // 🔥 THIS IS THE KEY ADDITION - Handle alerts for API-triggered notifications
-            handleNewNotificationAlert(newNotification);
         })
         .on<NotificationFromDB>('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'notifications' }, payload => {
-            setNotifications(prev => prev.map(n => n.id === payload.new.id ? {...n, ...payload.new} as AppNotification : n));
+            setNotifications(prev => prev.map(n => n.id === payload.new.id ? {...n, ...payload.new} as Notification : n));
         })
         .on<CommentFromDB>('postgres_changes', { event: 'INSERT', schema: 'public', table: 'comments' }, async (payload) => {
              const newCommentPayload = payload.new;
@@ -212,8 +179,115 @@ function App() {
         supabase.removeChannel(subscriptionChannel);
       };
     }
-  }, [session, handleNewNotificationAlert]); // Added handleNewNotificationAlert to dependencies
+  }, [session]);
   
+  // --- Push Notification Subscription Effect ---
+  const saveSubscription = useCallback(async (subscription: PushSubscription) => {
+    if (!session) return;
+    const { endpoint, keys } = JSON.parse(JSON.stringify(subscription));
+    
+    const subData = {
+        user_id: session.user.id,
+        endpoint: endpoint,
+        keys: {
+            p256dh: keys.p256dh,
+            auth: keys.auth,
+        },
+    };
+
+    const { error } = await supabase.from('push_subscriptions').upsert(subData, { onConflict: 'endpoint' });
+
+    if (error) {
+        console.error('Error saving push subscription:', error);
+        throw error;
+    }
+  }, [session]);
+  
+  useEffect(() => {
+    if (!session || !('serviceWorker' in navigator) || !('PushManager' in window)) {
+      setIsPushLoading(false);
+      return;
+    }
+    
+    const checkSubscription = async () => {
+        setIsPushLoading(true);
+        try {
+            const registration = await navigator.serviceWorker.ready;
+            const subscription = await registration.pushManager.getSubscription();
+            if (subscription) {
+                setIsPushEnabled(true);
+                await saveSubscription(subscription);
+            } else {
+                setIsPushEnabled(false);
+            }
+        } catch (error) {
+            console.error('Error checking push subscription:', error);
+            setIsPushEnabled(false);
+        } finally {
+            setIsPushLoading(false);
+        }
+    };
+    checkSubscription();
+  }, [session, saveSubscription]);
+
+  const urlBase64ToUint8Array = (base64String: string) => {
+      const padding = "=".repeat((4 - base64String.length % 4) % 4);
+      const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+      const rawData = window.atob(base64);
+      const outputArray = new Uint8Array(rawData.length);
+      for (let i = 0; i < rawData.length; ++i) {
+          outputArray[i] = rawData.charCodeAt(i);
+      }
+      return outputArray;
+  };
+
+  const subscribeToPush = async () => {
+    const vapidPublicKey = import.meta.env.VITE_VAPID_PUBLIC_KEY;
+    if (!vapidPublicKey) {
+      console.error('VITE_VAPID_PUBLIC_KEY not found in .env. Cannot subscribe to push notifications.');
+      alert('Push notification setup is incomplete on the server. Please contact an administrator.');
+      return;
+    }
+    if (!session) return;
+    setIsPushLoading(true);
+
+    try {
+        const registration = await navigator.serviceWorker.ready;
+        const subscription = await registration.pushManager.subscribe({
+            userVisibleOnly: true,
+            applicationServerKey: urlBase64ToUint8Array(vapidPublicKey),
+        });
+        
+        await saveSubscription(subscription);
+        setIsPushEnabled(true);
+    } catch (error) {
+        console.error('Failed to subscribe to push notifications:', error);
+        setIsPushEnabled(false);
+        if (Notification.permission === 'denied') {
+             alert("Notification permission was denied. Please enable it in your browser settings to receive push alerts.");
+        }
+    } finally {
+        setIsPushLoading(false);
+    }
+  };
+  
+  const unsubscribeFromPush = async () => {
+      setIsPushLoading(true);
+      try {
+          const registration = await navigator.serviceWorker.ready;
+          const subscription = await registration.pushManager.getSubscription();
+          if (subscription) {
+              await subscription.unsubscribe();
+              await supabase.from('push_subscriptions').delete().eq('endpoint', subscription.endpoint);
+              setIsPushEnabled(false);
+          }
+      } catch (error) {
+          console.error('Failed to unsubscribe from push:', error);
+      } finally {
+          setIsPushLoading(false);
+      }
+  }
+
   useEffect(() => {
     if (theme === 'dark') {
       document.documentElement.classList.add('dark');
@@ -230,7 +304,7 @@ function App() {
     setToasts(prev => prev.filter(t => t.id !== id));
   };
 
-  const addToast = (notification: AppNotification) => {
+  const addToast = (notification: Notification) => {
     setToasts(prev => [{...notification}, ...prev]);
   };
 
@@ -264,12 +338,15 @@ function App() {
         const randomTopic = subscribedTopics[Math.floor(Math.random() * subscribedTopics.length)];
         topicId = randomTopic.id;
         topicName = ` (${randomTopic.name})`;
+    } else {
+        alert("Please subscribe to at least one topic to send a test alert.");
+        return;
     }
 
     const newAlert: Database['public']['Tables']['notifications']['Insert'] = {
         type: 'server_alert',
         title: `Test Alert: High Priority${topicName}`,
-        message: 'Testing the functionality.',
+        message: 'This is a test push notification from MCM Alerts.',
         severity: 'high',
         status: 'new',
         timestamp: new Date().toISOString(),
@@ -277,13 +354,23 @@ function App() {
         topic_id: topicId,
     };
     
-    const { data, error } = await supabase.from('notifications').insert([newAlert]).select().single();
+    // The alert is created on the backend, which now triggers a push notification.
+    // We only need to show a local toast and play a sound if the app is active.
+    const { error } = await supabase.functions.invoke('create-notification', {
+        body: newAlert,
+    });
     
     if (error) {
         console.error("Error sending test alert:", error);
+        alert(`Failed to send test alert: ${error.message}`);
+    } else {
+        addToast({ ...newAlert, id: `toast-${Date.now()}`, comments: [], created_at: new Date().toISOString() });
+        if (soundEnabled) {
+            const audio = new Audio('https://cdn.freesound.org/previews/511/511485_6102149-lq.mp3');
+            audio.play().catch(e => console.error("Error playing sound:", e));
+        }
     }
-    // Note: Removed the manual toast/sound/notification handling here since it will be handled by the real-time subscription
-  }, [snoozedUntil, topics]);
+  }, [soundEnabled, snoozedUntil, topics]);
 
   const updateNotification = async (notificationId: string, updates: NotificationUpdatePayload) => {
     const { error } = await supabase
@@ -400,6 +487,10 @@ function App() {
                 setSoundEnabled={setSoundEnabled}
                 snoozedUntil={snoozedUntil}
                 setSnoozedUntil={setSnoozedUntil}
+                isPushEnabled={isPushEnabled}
+                isPushLoading={isPushLoading}
+                onSubscribeToPush={subscribeToPush}
+                onUnsubscribeFromPush={unsubscribeFromPush}
             />
         </ErrorBoundary>
       </div>
