@@ -3,8 +3,6 @@ declare const Deno: any;
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import webpush from 'https://esm.sh/web-push@3.6.7'
 
-// Note: This is a simplified CORS header. In a production environment,
-// you would want to restrict this to your specific domains.
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -12,13 +10,12 @@ const corsHeaders = {
 
 console.log("Create-notification function booting up!");
 
-// VAPID keys should be set in Supabase Function's environment variables
 const vapidPublicKey = Deno.env.get('VAPID_PUBLIC_KEY');
 const vapidPrivateKey = Deno.env.get('VAPID_PRIVATE_KEY');
 
 if (vapidPublicKey && vapidPrivateKey) {
     webpush.setVapidDetails(
-        'mailto:admin@example.com', // This should be a valid admin email address
+        'mailto:admin@mcmalerts.com', // Update this to your admin email
         vapidPublicKey,
         vapidPrivateKey
     );
@@ -28,7 +25,6 @@ if (vapidPublicKey && vapidPrivateKey) {
 }
 
 Deno.serve(async (req: Request) => {
-  // Handle CORS preflight requests.
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
   }
@@ -39,32 +35,57 @@ Deno.serve(async (req: Request) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
-    const { type, title, message, site, priority, topic_id } = await req.json();
+    const requestData = await req.json();
+    console.log('Received request data:', requestData);
+    
+    // Handle both your frontend format and external API format
+    const {
+      type = 'server_alert',
+      title,
+      message,
+      severity,
+      site,
+      topic_id,
+      // Alternative field names for external APIs
+      priority,
+      status = 'new',
+      timestamp = new Date().toISOString()
+    } = requestData;
     
     // Basic validation
-    if (!title || !message || !priority) {
-      return new Response(JSON.stringify({ error: 'Missing required fields: title, message, priority' }), {
+    if (!title || !message) {
+      return new Response(JSON.stringify({ 
+        error: 'Missing required fields: title and message are required' 
+      }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         status: 400,
       });
     }
     
+    // Map severity/priority to your database format
     const severityMap: {[key: string]: 'low' | 'medium' | 'high'} = {
       'low': 'low',
       'medium': 'medium',
-      'high': 'high'
+      'high': 'high',
+      'critical': 'high' // Map critical to high since your DB doesn't have critical
     };
 
+    const finalSeverity = severity || 
+                         (priority ? severityMap[priority.toLowerCase()] : null) || 
+                         'medium';
+
     const newNotification = {
-        type: type || 'custom',
+        type,
         title,
         message,
-        severity: severityMap[priority.toLowerCase()] || 'low',
-        status: 'new',
-        timestamp: new Date().toISOString(),
+        severity: finalSeverity,
+        status,
+        timestamp,
         site: site || null,
         topic_id: topic_id || null,
     };
+    
+    console.log('Inserting notification:', newNotification);
     
     const { data: newNotificationData, error: insertError } = await supabaseAdmin
       .from('notifications')
@@ -79,9 +100,8 @@ Deno.serve(async (req: Request) => {
 
     console.log('Successfully inserted notification:', newNotificationData);
     
-    // --- Send Push Notifications ---
+    // Send Push Notifications
     if (topic_id && vapidPublicKey && vapidPrivateKey) {
-        // 1. Find users subscribed to the topic
         const { data: subscriptions, error: subError } = await supabaseAdmin
             .from('topic_subscriptions')
             .select('user_id')
@@ -92,7 +112,6 @@ Deno.serve(async (req: Request) => {
         } else if (subscriptions && subscriptions.length > 0) {
             const userIds = subscriptions.map(s => s.user_id);
 
-            // 2. Get push subscriptions for these users
             const { data: pushSubscriptions, error: pushSubError } = await supabaseAdmin
                 .from('push_subscriptions')
                 .select('endpoint, keys')
@@ -100,14 +119,16 @@ Deno.serve(async (req: Request) => {
 
             if (pushSubError) {
                 console.error('Error fetching push subscriptions:', pushSubError);
-            } else if (pushSubscriptions) {
+            } else if (pushSubscriptions && pushSubscriptions.length > 0) {
                 const pushPayload = JSON.stringify({
                     title: newNotificationData.title,
                     message: newNotificationData.message,
+                    severity: newNotificationData.severity,
+                    id: newNotificationData.id,
+                    timestamp: newNotificationData.timestamp,
                     url: `/`
                 });
 
-                // 3. Send notifications
                 const sendPromises = pushSubscriptions.map(sub => {
                     const pushSubscription = {
                         endpoint: sub.endpoint,
@@ -118,8 +139,7 @@ Deno.serve(async (req: Request) => {
                     };
                     return webpush.sendNotification(pushSubscription, pushPayload)
                         .catch((err: any) => {
-                            console.error(`Error sending push notification to ${sub.endpoint.substring(0, 40)}...:`, err.statusCode);
-                            // If endpoint is gone (410) or not found (404), delete it from our DB
+                            console.error(`Error sending push notification:`, err.statusCode);
                             if (err.statusCode === 410 || err.statusCode === 404) {
                                 console.log('Deleting stale push subscription.');
                                 return supabaseAdmin.from('push_subscriptions').delete().eq('endpoint', sub.endpoint);
@@ -133,7 +153,10 @@ Deno.serve(async (req: Request) => {
         }
     }
 
-    return new Response(JSON.stringify({ data: newNotificationData }), {
+    return new Response(JSON.stringify({ 
+      success: true, 
+      data: newNotificationData 
+    }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       status: 200,
     });
@@ -141,7 +164,7 @@ Deno.serve(async (req: Request) => {
     console.error('Function error:', error.message);
     return new Response(JSON.stringify({ error: error.message }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      status: 500, // Using 500 for server-side errors
+      status: 500,
     });
   }
 });
