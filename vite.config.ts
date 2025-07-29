@@ -18,11 +18,10 @@ export default defineConfig({
               cacheName: 'supabase-cache',
               expiration: {
                 maxEntries: 10,
-                maxAgeSeconds: 60 * 60 * 24 * 365, // <== 365 days
+                maxAgeSeconds: 60 * 60 * 24 * 365, // 365 days
               },
-              cacheKeyWillBeUsed: async ({ request }) => {
-                return `${request.url}?${Math.round(Date.now() / 1000 / 60 / 60 / 24)}`;
-              },
+              // Removed cacheKeyWillBeUsed as it's not a valid Workbox option
+              networkTimeoutSeconds: 10,
             },
           },
         ],
