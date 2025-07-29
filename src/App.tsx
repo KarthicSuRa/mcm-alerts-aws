@@ -249,7 +249,7 @@ function App() {
         addToast({ ...newNotification, comments: [] });
 
         if (soundEnabled) {
-            const audio = new Audio('https://cdn.freesound.org/previews/511/511485_6102149-lq.mp3');
+            const audio = new Audio('/alert.wav');
             audio.play().catch(e => console.error("Error playing sound:", e));
         }
 
