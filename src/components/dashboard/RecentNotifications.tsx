@@ -1,5 +1,3 @@
-
-
 import React, { useState, useMemo } from 'react';
 import { Notification, Severity, Topic, NotificationStatus, Session, NotificationUpdatePayload } from '../../types';
 import { SEVERITY_INFO, STATUS_INFO } from '../../constants';
@@ -66,8 +64,9 @@ export const RecentNotifications: React.FC<RecentNotificationsProps> = ({ notifi
     };
 
     return (
-        <div className="bg-gradient-to-br from-card to-secondary/20 rounded-xl border border-border shadow-lg shadow-black/5 h-full flex flex-col">
-            <div className="p-4 border-b border-border">
+        <div className="bg-gradient-to-br from-card to-secondary/20 rounded-xl border border-border shadow-lg shadow-black/5 h-full max-h-[calc(100vh-8rem)] flex flex-col">
+            {/* Fixed Header - doesn't scroll */}
+            <div className="p-4 border-b border-border flex-shrink-0">
                 <h3 className="text-xl font-semibold mb-4">Recent Notifications</h3>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
                     <div className="relative md:col-span-1">
@@ -102,59 +101,63 @@ export const RecentNotifications: React.FC<RecentNotificationsProps> = ({ notifi
                     </select>
                 </div>
             </div>
-            <div className="flex-1 p-2 space-y-2 min-h-0 overflow-y-auto">
-                {filteredNotifications.length === 0 ? (
-                    <div className="text-center py-16 text-muted-foreground">
-                        <p>No notifications match your filters.</p>
-                        <p className="text-sm mt-1">Try sending a test alert or adjusting filters!</p>
-                    </div>
-                ) : filteredNotifications.map(n => {
-                    return (
-                        <div key={n.id} className="bg-card rounded-lg overflow-hidden transition-shadow duration-300 hover:shadow-2xl border border-border">
-                            <div 
-                                className={`p-4 cursor-pointer transition-colors hover:bg-accent/50 ${expandedId === n.id ? 'bg-accent/50' : ''}`} 
-                                onClick={() => setExpandedId(expandedId === n.id ? null : n.id)}
-                            >
-                                <div className="grid grid-cols-[2rem,1fr,auto] gap-4 items-start">
-                                    <div>
-                                        <Icon name={SEVERITY_INFO[n.severity].icon} className={`w-8 h-8 ${SEVERITY_INFO[n.severity].color}`} />
-                                    </div>
-                                    <div className="min-w-0">
-                                        <h4 className="font-semibold text-base text-foreground truncate pr-4">{n.title}</h4>
-                                        <p className="text-sm text-muted-foreground mt-1 truncate">{n.message}</p>
-                                        <div className="flex items-center gap-3 mt-3">
-                                            <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold rounded-full ${STATUS_INFO[n.status].bg} ${STATUS_INFO[n.status].text} capitalize`}>
-                                                {n.status === 'new' && <div className="w-2 h-2 rounded-full bg-destructive animate-blink"></div>}
-                                                <Icon name={STATUS_INFO[n.status].icon} className="w-3.5 h-3.5" />
-                                                {n.status}
-                                            </span>
+            
+            {/* Scrollable Content Area */}
+            <div className="flex-1 min-h-0 overflow-y-auto">
+                <div className="p-2 space-y-2">
+                    {filteredNotifications.length === 0 ? (
+                        <div className="text-center py-16 text-muted-foreground">
+                            <p>No notifications match your filters.</p>
+                            <p className="text-sm mt-1">Try sending a test alert or adjusting filters!</p>
+                        </div>
+                    ) : filteredNotifications.map(n => {
+                        return (
+                            <div key={n.id} className="bg-card rounded-lg overflow-hidden transition-shadow duration-300 hover:shadow-2xl border border-border">
+                                <div 
+                                    className={`p-4 cursor-pointer transition-colors hover:bg-accent/50 ${expandedId === n.id ? 'bg-accent/50' : ''}`} 
+                                    onClick={() => setExpandedId(expandedId === n.id ? null : n.id)}
+                                >
+                                    <div className="grid grid-cols-[2rem,1fr,auto] gap-4 items-start">
+                                        <div>
+                                            <Icon name={SEVERITY_INFO[n.severity].icon} className={`w-8 h-8 ${SEVERITY_INFO[n.severity].color}`} />
+                                        </div>
+                                        <div className="min-w-0">
+                                            <h4 className="font-semibold text-base text-foreground truncate pr-4">{n.title}</h4>
+                                            <p className="text-sm text-muted-foreground mt-1 truncate">{n.message}</p>
+                                            <div className="flex items-center gap-3 mt-3">
+                                                <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold rounded-full ${STATUS_INFO[n.status].bg} ${STATUS_INFO[n.status].text} capitalize`}>
+                                                    {n.status === 'new' && <div className="w-2 h-2 rounded-full bg-destructive animate-blink"></div>}
+                                                    <Icon name={STATUS_INFO[n.status].icon} className="w-3.5 h-3.5" />
+                                                    {n.status}
+                                                </span>
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                             <p className="text-xs text-muted-foreground flex-shrink-0">{new Date(n.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</p>
+                                            {n.status === 'new' && (
+                                                <button
+                                                    onClick={(e) => handleQuickAcknowledge(e, n)}
+                                                    className="p-1.5 rounded-full text-muted-foreground hover:bg-accent hover:text-primary"
+                                                    title="Quick Acknowledge"
+                                                >
+                                                    <Icon name="check" className="w-5 h-5" />
+                                                </button>
+                                            )}
                                         </div>
                                     </div>
-                                    <div className="flex items-center gap-2">
-                                         <p className="text-xs text-muted-foreground flex-shrink-0">{new Date(n.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</p>
-                                        {n.status === 'new' && (
-                                            <button
-                                                onClick={(e) => handleQuickAcknowledge(e, n)}
-                                                className="p-1.5 rounded-full text-muted-foreground hover:bg-accent hover:text-primary"
-                                                title="Quick Acknowledge"
-                                            >
-                                                <Icon name="check" className="w-5 h-5" />
-                                            </button>
-                                        )}
-                                    </div>
                                 </div>
+                                {expandedId === n.id && (
+                                    <NotificationDetail 
+                                        notification={n}
+                                        onUpdateNotification={onUpdateNotification}
+                                        onAddComment={onAddComment}
+                                        session={session}
+                                    />
+                                )}
                             </div>
-                            {expandedId === n.id && (
-                                <NotificationDetail 
-                                    notification={n}
-                                    onUpdateNotification={onUpdateNotification}
-                                    onAddComment={onAddComment}
-                                    session={session}
-                                />
-                            )}
-                        </div>
-                    );
-                })}
+                        );
+                    })}
+                </div>
             </div>
         </div>
     );
