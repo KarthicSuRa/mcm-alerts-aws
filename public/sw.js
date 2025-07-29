@@ -3,7 +3,6 @@ const CACHE_NAME = 'mcm-alerts-cache-v1';
 // On install, pre-cache some resources
 self.addEventListener('install', event => {
   console.log('Service Worker: Installing...');
-  // We don't pre-cache anything here, we will cache on the fly.
 });
 
 // On activate, clean up old caches
@@ -24,6 +23,55 @@ self.addEventListener('activate', event => {
   console.log('Service Worker: Activated');
 });
 
+self.addEventListener('push', event => {
+  console.log('[Service Worker] Push Received.');
+  let data = {};
+  try {
+    data = event.data.json();
+  } catch (e) {
+    data = {
+      title: 'New Notification',
+      message: event.data.text()
+    };
+  }
+
+  const title = data.title || 'MCM Alerts';
+  const options = {
+    body: data.message || 'You have a new alert.',
+    icon: '/icons/icon-192x192.png',
+    badge: '/icons/icon-192x192.png', // For Android
+    data: {
+      url: data.url || '/'
+    }
+  };
+
+  event.waitUntil(self.registration.showNotification(title, options));
+});
+
+self.addEventListener('notificationclick', event => {
+  console.log('[Service Worker] Notification click Received.');
+  event.notification.close();
+  const urlToOpen = event.notification.data.url || '/';
+
+  event.waitUntil(
+    clients.matchAll({
+      type: "window",
+      includeUncontrolled: true
+    }).then(clientList => {
+      // If a window for the app is already open, focus it.
+      for (const client of clientList) {
+        if (client.url.endsWith(urlToOpen) && 'focus' in client) {
+          return client.focus();
+        }
+      }
+      // Otherwise, open a new window.
+      if (clients.openWindow) {
+        return clients.openWindow(urlToOpen);
+      }
+    })
+  );
+});
+
 // Use a stale-while-revalidate strategy for all requests
 self.addEventListener('fetch', event => {
   // We only want to cache GET requests.
@@ -42,12 +90,8 @@ self.addEventListener('fetch', event => {
           return networkResponse;
         }).catch(err => {
           console.error('Service Worker: Fetch failed:', err);
-          // If fetch fails and we have nothing in cache, we will fail.
-          // This is expected. If we have something in cache, it would have been returned already.
         });
 
-        // Return the cached response immediately if it exists,
-        // and fetch the update in the background.
         return cachedResponse || fetchPromise;
       });
     })
