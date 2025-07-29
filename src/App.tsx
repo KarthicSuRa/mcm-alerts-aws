@@ -1,5 +1,3 @@
-
-
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { LandingPage } from './pages/LandingPage';
 import { SupabaseLoginPage } from './pages/SupabaseLoginPage';
@@ -10,7 +8,7 @@ import { HowItWorksPage } from './pages/HowItWorksPage';
 import { Sidebar } from './components/layout/Sidebar';
 import { SettingsModal } from './components/layout/SettingsModal';
 import { NotificationToast } from './components/ui/NotificationToast';
-import { Theme, Notification, Severity, NotificationStatus, SystemStatusData, Session, Comment, NotificationUpdatePayload, Topic, Database } from './types';
+import { Theme, Notification as AppNotification, Severity, NotificationStatus, SystemStatusData, Session, Comment, NotificationUpdatePayload, Topic, Database } from './types';
 import { supabase } from './lib/supabaseClient';
 import { ThemeContext } from './contexts/ThemeContext';
 import ErrorBoundary from './components/ui/ErrorBoundary';
@@ -33,9 +31,9 @@ function App() {
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [snoozedUntil, setSnoozedUntil] = useState<Date | null>(null);
 
-  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [topics, setTopics] = useState<Topic[]>([]);
-  const [toasts, setToasts] = useState<Notification[]>([]);
+  const [toasts, setToasts] = useState<AppNotification[]>([]);
 
   const systemStatus: SystemStatusData = useMemo(() => ({
     service: 'Ready',
@@ -102,7 +100,7 @@ function App() {
                     }))
                 };
             });
-            setNotifications(transformedData as Notification[]);
+            setNotifications(transformedData as AppNotification[]);
         }
 
         // Fetch topics and user subscriptions
@@ -128,11 +126,11 @@ function App() {
       const notificationChannel = supabase
         .channel('public:notifications')
         .on<NotificationFromDB>('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications' }, payload => {
-            const newNotification = {...payload.new, comments: [] } as Notification;
+            const newNotification = {...payload.new, comments: [] } as AppNotification;
             setNotifications(prev => [newNotification, ...prev]);
         })
         .on<NotificationFromDB>('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'notifications' }, payload => {
-            setNotifications(prev => prev.map(n => n.id === payload.new.id ? {...n, ...payload.new} as Notification : n));
+            setNotifications(prev => prev.map(n => n.id === payload.new.id ? {...n, ...payload.new} as AppNotification : n));
         })
         .on<CommentFromDB>('postgres_changes', { event: 'INSERT', schema: 'public', table: 'comments' }, async (payload) => {
              const newCommentPayload = payload.new;
@@ -195,7 +193,7 @@ function App() {
     setToasts(prev => prev.filter(t => t.id !== id));
   };
 
-  const addToast = (notification: Notification) => {
+  const addToast = (notification: AppNotification) => {
     setToasts(prev => [{...notification}, ...prev]);
   };
 
