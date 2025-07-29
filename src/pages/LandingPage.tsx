@@ -284,7 +284,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onNavigate }) => {
           <div className="flex flex-col md:flex-row justify-between items-center gap-4">
             <div className="flex items-center space-x-2">
               <div className="w-6 h-6 bg-gradient-to-br from-blue-600 to-purple-700 rounded flex items-center justify-center">
-                <Icon name="mcmLogo" className="w-4 h-4 text-white" />
+                <Icon name="mcmLogo" className="w-8 h-8 text-white" />
               </div>
               <span className="text-sm text-slate-600 dark:text-slate-400">
                 © 2025 MCM Alerts. All rights reserved.
