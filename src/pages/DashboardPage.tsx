@@ -43,7 +43,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                 systemStatus={systemStatus}
                 session={session}
             />
-            <main className="flex-1 overflow-y-auto">
+            <main className="flex-1 overflow-y-auto lg:ml-72">
                 <div className="max-w-screen-2xl mx-auto p-4 sm:p-6 lg:p-8">
                     <ErrorBoundary>
                         <StatCards notifications={notifications} />
