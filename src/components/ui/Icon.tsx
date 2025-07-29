@@ -1,4 +1,3 @@
-
 import React from 'react';
 
 interface IconProps {
@@ -8,10 +7,11 @@ interface IconProps {
 
 const icons: { [key: string]: React.ReactNode } = {
   mcmLogo: (
-    <svg width="120" height="40" viewBox="0 0 165 55" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
-        <text x="50%" y="20" dominantBaseline="middle" textAnchor="middle" fontSize="24" fontWeight="bold" fontFamily="sans-serif">MCM</text>
-        <path d="M162.7,41.9c-2.3-2.1-4.9-3.9-7.6-5.5c-5.8-3.3-12-5.4-18.4-6.4c-3.1-0.5-6.2-0.7-9.3-0.7c-9.5,0-18.8,2.3-27.3,6.5 c-1.5,0.7-3,1.5-4.4,2.3l-1.5-2c-0.6-0.8-1.5-1.5-2.5-1.8c-1-0.3-2.1,0-3,0.6l-2,1.3c-0.9,0.6-1.5,1.5-1.8,2.5 c-0.3,1,0,2.1,0.6,3l1.5,2c-1.4,0.8-2.9,1.6-4.4,2.3c-8.5,4.2-17.8,6.5-27.3,6.5c-3.1,0-6.2-0.2-9.3-0.7 c-6.4-1-12.6-3.1-18.4-6.4c-2.8-1.6-5.4-3.4-7.6-5.5c-0.8-0.8-2-1-3-0.6c-1,0.3-1.8,1-2.2,2c-1.1,2.3-0.2,5.1,1.9,6.5 c2.7,1.8,5.6,3.4,8.6,4.8c6.6,3,13.6,5,20.7,5.8c3.5,0.4,7,0.6,10.5,0.6c10.1,0,20-2.4,29-7c0.6-0.3,1.3-0.6,1.9-0.9 c-3.9,5.2-6.5,11.2-7.2,17.7c-0.1,0.8,0.2,1.6,0.7,2.2c0.6,0.6,1.3,0.9,2.1,0.9h0c1.7,0,3.1-1.2,3.4-2.8 c1.1-5.6,3.5-10.9,6.9-15.5c1.4,0.4,2.8,0.7,4.2,0.9c4.2,0.7,8.5,1,12.8,1c4.4,0,8.7-0.3,12.8-1c1.4-0.2,2.8-0.5,4.2-0.9 c3.4,4.6,5.8,9.9,6.9,15.5c0.3,1.6,1.7,2.8,3.4,2.8h0c0.8,0,1.6-0.3,2.1-0.9c0.5-0.6,0.8-1.4,0.7-2.2 c-0.7-6.5-3.2-12.5-7.2-17.7c0.6,0.3,1.3,0.6,1.9,0.9c9,4.6,18.9,7,29,7c3.5,0,7-0.2,10.5-0.6c7.1-0.8,14.1-2.8,20.7-5.8 c3-1.4,5.9-3,8.6-4.8c2.1-1.4,3-4.2,1.9-6.5C164.5,42.9,163.7,42.2,162.7,41.9z"/>
-    </svg>
+    <img 
+      src="/icons/icon-192x192.png" 
+      alt="MCM Logo" 
+      className="w-[120px] h-[40px] object-contain"
+    />
   ),
   moon: <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z" fill="currentColor" strokeWidth="0" />,
   sun: <><circle cx="12" cy="12" r="5" fill="currentColor" /><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" /></>,
@@ -53,7 +53,11 @@ const icons: { [key: string]: React.ReactNode } = {
 export const Icon: React.FC<IconProps> = ({ name, className = 'w-6 h-6' }) => {
   const icon = icons[name];
   if (name === 'mcmLogo') {
-    return icon;
+    return (
+      <div className={className}>
+        {icon}
+      </div>
+    );
   }
 
   return (
