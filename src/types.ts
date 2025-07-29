@@ -1,4 +1,5 @@
 
+
 import { Session } from '@supabase/supabase-js';
 
 export interface Database {
@@ -90,6 +91,26 @@ export interface Database {
         Update: {
           user_id?: string
           topic_id?: string
+        }
+        Relationships: []
+      },
+      push_subscriptions: {
+        Row: {
+          id: number
+          created_at: string
+          user_id: string
+          endpoint: string
+          keys: { p256dh: string, auth: string }
+        }
+        Insert: {
+          user_id: string
+          endpoint: string
+          keys: { p256dh: string, auth: string }
+        }
+        Update: {
+          user_id?: string
+          endpoint?: string
+          keys?: { p256dh: string, auth: string }
         }
         Relationships: []
       }
