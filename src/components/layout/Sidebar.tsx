@@ -57,6 +57,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         <div className="h-20 flex items-center justify-between px-6 border-b border-border shrink-0">
             <button onClick={() => onNavigate('dashboard')} className="flex items-center gap-2">
                 <Icon name="mcmLogo" />
+                <span className="text-lg font-semibold text-foreground">MCM Alerts</span>
             </button>
             <button onClick={() => setIsSidebarOpen(false)} className="p-2 -mr-2 rounded-md text-muted-foreground lg:hidden">
                 <Icon name="x" className="h-5 w-5" />
