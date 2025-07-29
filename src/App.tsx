@@ -398,8 +398,8 @@ function App() {
         topic_id: topicId,
     };
     
-    // The alert is created on the backend, which triggers a push notification and real-time update
-    // The real-time subscription will handle the sound, toast, and browser notification
+    // The alert is created on the backend, which now triggers a push notification.
+    // We only need to show a local toast and play a sound if the app is active.
     const { error } = await supabase.functions.invoke('create-notification', {
         body: newAlert,
     });
@@ -407,8 +407,14 @@ function App() {
     if (error) {
         console.error("Error sending test alert:", error);
         alert(`Failed to send test alert: ${error.message}`);
+    } else {
+        addToast({ ...newAlert, id: `toast-${Date.now()}`, comments: [], created_at: new Date().toISOString() } as Notification);
+        if (soundEnabled) {
+            const audio = new Audio('https://cdn.freesound.org/previews/511/511485_6102149-lq.mp3');
+            audio.play().catch(e => console.error("Error playing sound:", e));
+        }
     }
-  }, [snoozedUntil, topics, session]);
+  }, [soundEnabled, snoozedUntil, topics, session]);
 
   const updateNotification = async (notificationId: string, updates: NotificationUpdatePayload) => {
     const { error } = await supabase
