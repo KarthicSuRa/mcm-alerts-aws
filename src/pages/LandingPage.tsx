@@ -112,9 +112,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onNavigate }) => {
 
               {/* Trust Indicators */}
               <div className="pt-12">
-                <p className="text-sm font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-6">
-                  Trusted by 10,000+ teams worldwide
-                </p>
+      
                 <div className="flex justify-center items-center gap-8 flex-wrap opacity-60">
                   {['monitor', 'shield', 'dashboard', 'zap', 'bell'].map((iconName, i) => (
                     <div key={i} className="w-12 h-12 bg-slate-200 dark:bg-slate-700 rounded-lg flex items-center justify-center">
