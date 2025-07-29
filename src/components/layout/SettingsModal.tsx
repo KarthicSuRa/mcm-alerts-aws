@@ -8,6 +8,10 @@ interface SettingsModalProps {
     setSoundEnabled: (enabled: boolean) => void;
     snoozedUntil: Date | null;
     setSnoozedUntil: (date: Date | null) => void;
+    isPushEnabled: boolean;
+    isPushLoading: boolean;
+    onSubscribeToPush: () => void;
+    onUnsubscribeFromPush: () => void;
 }
 
 const ToggleSwitch: React.FC<{ enabled: boolean; onChange: (enabled: boolean) => void }> = ({ enabled, onChange }) => (
@@ -19,7 +23,18 @@ const ToggleSwitch: React.FC<{ enabled: boolean; onChange: (enabled: boolean) =>
     </button>
 );
 
-export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, soundEnabled, setSoundEnabled, snoozedUntil, setSnoozedUntil }) => {
+export const SettingsModal: React.FC<SettingsModalProps> = ({ 
+    isOpen, 
+    onClose, 
+    soundEnabled, 
+    setSoundEnabled, 
+    snoozedUntil, 
+    setSnoozedUntil,
+    isPushEnabled,
+    isPushLoading,
+    onSubscribeToPush,
+    onUnsubscribeFromPush
+}) => {
     const [permission, setPermission] = useState(window.Notification?.permission);
     const [snoozeTime, setSnoozeTime] = useState<number | null>(null);
 
@@ -29,7 +44,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, s
 
         if (snoozedUntil && snoozedUntil > new Date()) {
              const diff = snoozedUntil.getTime() - new Date().getTime();
-             // Find which button was conceptually clicked
              if (Math.abs(diff - 30*60*1000) < 1000) setSnoozeTime(30);
              else if (Math.abs(diff - 60*60*1000) < 1000) setSnoozeTime(60);
              else if (Math.abs(diff - 4*60*60*1000) < 1000) setSnoozeTime(240);
@@ -40,21 +54,44 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, s
             setSnoozeTime(null);
         }
 
-    }, [isOpen, snoozedUntil]);
+    }, [isOpen, snoozedUntil, setSnoozedUntil]);
 
     if (!isOpen) return null;
 
     const handleRequestNotificationPermission = () => {
         if (!("Notification" in window)) {
             alert("This browser does not support desktop notification");
-        } else if (window.Notification.permission !== "denied") {
+        } else if (permission === "denied") {
+            alert("Notification permission was denied. Please enable it in your browser settings.");
+        } else if (permission === "default") {
             window.Notification.requestPermission().then(p => {
                 setPermission(p);
                 if (p === "granted") {
-                    new window.Notification("MCM Alerts", { body: "Push notifications enabled!" });
+                    onSubscribeToPush();
                 }
             });
         }
+    };
+    
+    const getPushComponent = () => {
+        if (isPushLoading) {
+            return <span className="text-sm font-medium text-muted-foreground">Loading...</span>;
+        }
+        if (permission === 'denied') {
+            return <span className="text-sm font-medium text-destructive">Denied in browser</span>;
+        }
+        if (isPushEnabled) {
+            return (
+                <button onClick={onUnsubscribeFromPush} className="px-4 py-2 text-sm font-semibold rounded-md bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                    Disable
+                </button>
+            );
+        }
+        return (
+            <button onClick={handleRequestNotificationPermission} className="px-4 py-2 text-sm font-semibold rounded-md bg-foreground text-background hover:bg-foreground/90">
+                Enable
+            </button>
+        );
     };
 
     const handleSnooze = (minutes: number | null) => {
@@ -94,19 +131,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, s
                     <div className="flex items-center justify-between">
                         <div>
                             <p className="font-semibold">Desktop Push Alerts</p>
-                            <p className="text-sm text-muted-foreground">Receive alerts on your desktop.</p>
+                            <p className="text-sm text-muted-foreground">Receive alerts even when the app is closed.</p>
                         </div>
-                        {permission === 'granted' ? (
-                             <span className="flex items-center gap-2 text-sm font-medium text-success">
-                                <Icon name="check" className="w-5 h-5" /> Enabled
-                             </span>
-                        ) : permission === 'denied' ? (
-                             <span className="text-sm font-medium text-destructive">Denied</span>
-                        ) : (
-                            <button onClick={handleRequestNotificationPermission} className="px-4 py-2 text-sm font-semibold rounded-md bg-foreground text-background hover:bg-foreground/90">
-                                Enable
-                            </button>
-                        )}
+                        {getPushComponent()}
                     </div>
 
                     {/* Sound Alerts */}
