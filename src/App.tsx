@@ -10,7 +10,7 @@ import { HowItWorksPage } from './pages/HowItWorksPage';
 import { Sidebar } from './components/layout/Sidebar';
 import { SettingsModal } from './components/layout/SettingsModal';
 import { NotificationToast } from './components/ui/NotificationToast';
-import { Theme, Notification, Severity, NotificationStatus, SystemStatusData, Session, Comment, NotificationUpdatePayload, Topic, Database } from './types';
+import { Theme, type Notification, Severity, NotificationStatus, SystemStatusData, Session, Comment, NotificationUpdatePayload, Topic, Database } from './types';
 import { supabase } from './lib/supabaseClient';
 import { ThemeContext } from './contexts/ThemeContext';
 import ErrorBoundary from './components/ui/ErrorBoundary';
@@ -58,6 +58,47 @@ function App() {
 
     return () => subscription.unsubscribe();
   }, []);
+
+  // --- Handle New Notifications (Sound & Toast) ---
+  const handleNewNotification = useCallback((notification: Notification) => {
+    // Check if notifications are snoozed
+    if (snoozedUntil && new Date() < snoozedUntil) {
+      console.log("Alerts are snoozed. Notification sound/toast blocked.");
+      return;
+    }
+
+    // Check if user is subscribed to this topic
+    const notificationTopic = topics.find(t => t.id === notification.topic_id);
+    if (notification.topic_id && (!notificationTopic || !notificationTopic.subscribed)) {
+      console.log("User not subscribed to this topic. Notification sound/toast blocked.");
+      return;
+    }
+
+    // Show toast notification
+    addToast(notification);
+
+    // Play sound if enabled
+    if (soundEnabled) {
+      const audio = new Audio('https://cdn.freesound.org/previews/511/511485_6102149-lq.mp3');
+      audio.play().catch(e => console.error("Error playing sound:", e));
+    }
+
+    // Show browser push notification if supported and user has granted permission
+    if ('Notification' in window && globalThis.Notification.permission === 'granted') {
+      try {
+        new globalThis.Notification(notification.title || 'New Alert', {
+          body: notification.message || 'You have a new notification',
+          icon: '/favicon.ico', // You can customize this
+          badge: '/favicon.ico',
+          tag: notification.id, // Prevents duplicate notifications
+          requireInteraction: notification.severity === 'high' || notification.severity === 'critical',
+          silent: !soundEnabled,
+        });
+      } catch (error) {
+        console.error('Error showing browser notification:', error);
+      }
+    }
+  }, [soundEnabled, snoozedUntil, topics, addToast]);
 
   // --- Data Fetching and Realtime Subscriptions ---
   useEffect(() => {
@@ -132,6 +173,9 @@ function App() {
         .on<NotificationFromDB>('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications' }, payload => {
             const newNotification = {...payload.new, comments: [] } as Notification;
             setNotifications(prev => [newNotification, ...prev]);
+            
+            // Handle sound and toast for new notifications
+            handleNewNotification(newNotification);
         })
         .on<NotificationFromDB>('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'notifications' }, payload => {
             setNotifications(prev => prev.map(n => n.id === payload.new.id ? {...n, ...payload.new} as Notification : n));
@@ -188,10 +232,10 @@ function App() {
     
     const subData: Database['public']['Tables']['push_subscriptions']['Insert'] = {
         user_id: session.user.id,
-        endpoint: endpoint,
+        endpoint: endpoint || '',
         keys: {
-            p256dh: keys!.p256dh,
-            auth: keys!.auth,
+            p256dh: keys!.p256dh!,
+            auth: keys!.auth!,
         },
     };
 
@@ -263,7 +307,7 @@ function App() {
     } catch (error) {
         console.error('Failed to subscribe to push notifications:', error);
         setIsPushEnabled(false);
-        if (Notification.permission === 'denied') {
+        if (globalThis.Notification.permission === 'denied') {
              alert("Notification permission was denied. Please enable it in your browser settings to receive push alerts.");
         }
     } finally {
@@ -354,8 +398,8 @@ function App() {
         topic_id: topicId,
     };
     
-    // The alert is created on the backend, which now triggers a push notification.
-    // We only need to show a local toast and play a sound if the app is active.
+    // The alert is created on the backend, which triggers a push notification and real-time update
+    // The real-time subscription will handle the sound, toast, and browser notification
     const { error } = await supabase.functions.invoke('create-notification', {
         body: newAlert,
     });
@@ -363,14 +407,8 @@ function App() {
     if (error) {
         console.error("Error sending test alert:", error);
         alert(`Failed to send test alert: ${error.message}`);
-    } else {
-        addToast({ ...newAlert, id: `toast-${Date.now()}`, comments: [], created_at: new Date().toISOString() } as Notification);
-        if (soundEnabled) {
-            const audio = new Audio('https://cdn.freesound.org/previews/511/511485_6102149-lq.mp3');
-            audio.play().catch(e => console.error("Error playing sound:", e));
-        }
     }
-  }, [soundEnabled, snoozedUntil, topics, session]);
+  }, [snoozedUntil, topics, session]);
 
   const updateNotification = async (notificationId: string, updates: NotificationUpdatePayload) => {
     const { error } = await supabase
