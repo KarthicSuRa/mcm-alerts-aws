@@ -18,7 +18,6 @@ type CommentFromDB = Database['public']['Tables']['comments']['Row'];
 type TopicFromDB = Database['public']['Tables']['topics']['Row'];
 type SubscriptionFromDB = Database['public']['Tables']['topic_subscriptions']['Row'];
 
-
 function App() {
   const [theme, setTheme] = useState<Theme>('light');
   const [session, setSession] = useState<Session | null>(null);
@@ -41,6 +40,41 @@ function App() {
     push: 'Supported',
     subscription: 'Active',
   }), []);
+
+  // Request notification permission on app load
+  useEffect(() => {
+    if ('Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission();
+    }
+  }, []);
+
+  // Helper function to handle new notifications (sound + toast + browser notification)
+  const handleNewNotificationAlert = useCallback((notification: AppNotification) => {
+    // Check if alerts are snoozed
+    if (snoozedUntil && new Date() < snoozedUntil) {
+      console.log("Alerts are snoozed. Notification alert blocked.");
+      return;
+    }
+
+    // Add toast
+    addToast(notification);
+
+    // Play sound if enabled
+    if (soundEnabled) {
+      const audio = new Audio('/alert.wav');
+      audio.play().catch(e => console.error("Error playing sound:", e));
+    }
+
+    // Show browser notification if permission granted
+    if (window.Notification && Notification.permission === 'granted') {
+      new window.Notification('New MCM Alert', {
+        body: `${notification.title}: ${notification.message}`,
+        icon: '/icons/icon-192x192.png',
+        tag: `notification-${notification.id}`, // Prevents duplicate notifications
+        requireInteraction: notification.severity === 'high'
+      });
+    }
+  }, [soundEnabled, snoozedUntil]);
 
   // --- Auth Effect ---
   useEffect(() => {
@@ -128,6 +162,9 @@ function App() {
         .on<NotificationFromDB>('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications' }, payload => {
             const newNotification = {...payload.new, comments: [] } as AppNotification;
             setNotifications(prev => [newNotification, ...prev]);
+            
+            // 🔥 THIS IS THE KEY ADDITION - Handle alerts for API-triggered notifications
+            handleNewNotificationAlert(newNotification);
         })
         .on<NotificationFromDB>('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'notifications' }, payload => {
             setNotifications(prev => prev.map(n => n.id === payload.new.id ? {...n, ...payload.new} as AppNotification : n));
@@ -175,7 +212,7 @@ function App() {
         supabase.removeChannel(subscriptionChannel);
       };
     }
-  }, [session]);
+  }, [session, handleNewNotificationAlert]); // Added handleNewNotificationAlert to dependencies
   
   useEffect(() => {
     if (theme === 'dark') {
@@ -244,23 +281,9 @@ function App() {
     
     if (error) {
         console.error("Error sending test alert:", error);
-    } else if (data) {
-        const newNotification = data as NotificationFromDB;
-        addToast({ ...newNotification, comments: [] });
-
-        if (soundEnabled) {
-            const audio = new Audio('/alert.wav');
-            audio.play().catch(e => console.error("Error playing sound:", e));
-        }
-
-        if (window.Notification && Notification.permission === 'granted') {
-            new window.Notification('New MCM Alert', {
-                body: `${newNotification.title}: ${newNotification.message}`,
-                icon: '/icons/icon-192x192.png' 
-            });
-        }
     }
-  }, [soundEnabled, snoozedUntil, topics]);
+    // Note: Removed the manual toast/sound/notification handling here since it will be handled by the real-time subscription
+  }, [snoozedUntil, topics]);
 
   const updateNotification = async (notificationId: string, updates: NotificationUpdatePayload) => {
     const { error } = await supabase
