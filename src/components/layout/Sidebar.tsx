@@ -54,7 +54,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
     const MainNavView = () => (
       <>
-        <div className="h-16 flex items-center justify-between px-6 border-b border-border shrink-0">
+        <div className="h-20 flex items-center justify-between px-6 border-b border-border shrink-0">
             <button onClick={() => onNavigate('dashboard')} className="flex items-center gap-2">
                 <Icon name="mcmLogo" />
             </button>
