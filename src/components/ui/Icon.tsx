@@ -10,7 +10,7 @@ const icons: { [key: string]: React.ReactNode } = {
     <img 
       src="/icons/icon-192x192.png" 
       alt="MCM Logo" 
-      className="w-24 h-24 sm:w-32 sm:h-32 md:w-40 md:h-40 lg:w-48 lg:h-48 xl:w-56 xl:h-56 object-contain"
+      className="w-16 h-16 sm:w-20 sm:h-20 md:w-24 md:h-24 lg:w-28 lg:h-28 xl:w-32 xl:h-32 object-contain"
     />
   ),
   moon: <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z" fill="currentColor" strokeWidth="0" />,
@@ -53,10 +53,14 @@ const icons: { [key: string]: React.ReactNode } = {
 export const Icon: React.FC<IconProps> = ({ name, className = 'w-6 h-6' }) => {
   const icon = icons[name];
   if (name === 'mcmLogo') {
+    // For mcmLogo, ignore any width/height classes from className prop and use responsive sizing
+    const otherClasses = className?.replace(/w-\w+|h-\w+/g, '').trim() || '';
     return (
-      <div className={className}>
-        {icon}
-      </div>
+      <img 
+        src="/icons/icon-192x192.png" 
+        alt="MCM Logo" 
+        className={`w-16 h-16 sm:w-20 sm:h-20 md:w-24 md:h-24 lg:w-28 lg:h-28 xl:w-32 xl:h-32 object-contain ${otherClasses}`}
+      />
     );
   }
 
