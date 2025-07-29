@@ -39,6 +39,14 @@ function App() {
   const [topics, setTopics] = useState<Topic[]>([]);
   const [toasts, setToasts] = useState<Notification[]>([]);
 
+  const addToast = (notification: Notification) => {
+    setToasts(prev => [{...notification}, ...prev]);
+  };
+
+  const removeToast = (id: string) => {
+    setToasts(prev => prev.filter(t => t.id !== id));
+  };
+
   const systemStatus: SystemStatusData = useMemo(() => ({
     service: 'Ready',
     database: 'Connected',
@@ -91,7 +99,7 @@ function App() {
           icon: '/favicon.ico', // You can customize this
           badge: '/favicon.ico',
           tag: notification.id, // Prevents duplicate notifications
-          requireInteraction: notification.severity === 'high' || notification.severity === 'critical',
+          requireInteraction: notification.severity === 'high',
           silent: !soundEnabled,
         });
       } catch (error) {
@@ -342,14 +350,6 @@ function App() {
   
   const handleUnauthedNavigate = (page: 'landing' | 'login') => {
     setUnauthedPage(page);
-  };
-
-  const removeToast = (id: string) => {
-    setToasts(prev => prev.filter(t => t.id !== id));
-  };
-
-  const addToast = (notification: Notification) => {
-    setToasts(prev => [{...notification}, ...prev]);
   };
 
   const toggleTheme = () => {
