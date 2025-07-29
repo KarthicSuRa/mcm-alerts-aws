@@ -10,7 +10,7 @@ const icons: { [key: string]: React.ReactNode } = {
     <img 
       src="/icons/icon-192x192.png" 
       alt="MCM Logo" 
-      className="w-[120px] h-[40px] object-contain"
+      className="w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 lg:w-14 lg:w-14 xl:w-16 xl:h-16 object-contain"
     />
   ),
   moon: <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z" fill="currentColor" strokeWidth="0" />,
