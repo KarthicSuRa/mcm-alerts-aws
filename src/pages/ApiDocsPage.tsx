@@ -68,7 +68,7 @@ export const ApiDocsPage: React.FC<ApiDocsPageProps> = ({ onNavigate, onLogout, 
   return (
     <>
         <Header onNavigate={onNavigate} onLogout={onLogout} notifications={notifications} setIsSidebarOpen={setIsSidebarOpen} openSettings={openSettings} systemStatus={systemStatus} session={session} />
-        <main className="flex-1 overflow-y-auto bg-background">
+        <main className="flex-1 overflow-y-auto bg-background lg:ml-72">
            <div className="max-w-screen-2xl mx-auto p-4 sm:p-6 lg:p-8">
                <div className="mb-8">
                     <h1 className="text-4xl font-bold">API Documentation</h1>
