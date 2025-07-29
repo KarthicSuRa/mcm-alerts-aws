@@ -104,12 +104,10 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onNavigate }) => {
                   onClick={() => onNavigate('login')} 
                   className="inline-flex h-12 items-center justify-center rounded-lg bg-gradient-to-r from-blue-600 to-purple-700 px-8 text-base font-semibold text-white shadow-lg hover:shadow-xl transform hover:-translate-y-1 transition-all duration-200"
                 >
-                  Start Free Trial
+                  Get Started
                   <span className="ml-2">→</span>
                 </button>
-                <button className="inline-flex h-12 items-center justify-center rounded-lg border-2 border-slate-300 dark:border-slate-600 px-8 text-base font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-all duration-200">
-                  Watch Demo
-                </button>
+        
               </div>
 
               {/* Trust Indicators */}
@@ -196,82 +194,20 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onNavigate }) => {
           </div>
         </section>
 
-        {/* Benefits Section */}
-        <section className="py-16 md:py-24 bg-white dark:bg-slate-800">
-          <div className="container mx-auto px-4 md:px-6">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
-              <div>
-                <h2 className="text-3xl md:text-4xl font-bold mb-6">
-                  Built for Enterprise Scale
-                </h2>
-                <div className="space-y-4">
-                  <div className="flex items-start space-x-3">
-                    <div className="w-6 h-6 bg-green-500 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
-                      <span className="text-white text-sm">✓</span>
-                    </div>
-                    <div>
-                      <h4 className="font-semibold">99.9% Uptime SLA</h4>
-                      <p className="text-slate-600 dark:text-slate-300">Reliable infrastructure that scales with your needs</p>
-                    </div>
-                  </div>
-                  <div className="flex items-start space-x-3">
-                    <div className="w-6 h-6 bg-green-500 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
-                      <span className="text-white text-sm">✓</span>
-                    </div>
-                    <div>
-                      <h4 className="font-semibold">SOC 2 Compliant</h4>
-                      <p className="text-slate-600 dark:text-slate-300">Enterprise-grade security and compliance standards</p>
-                    </div>
-                  </div>
-                  <div className="flex items-start space-x-3">
-                    <div className="w-6 h-6 bg-green-500 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
-                      <span className="text-white text-sm">✓</span>
-                    </div>
-                    <div>
-                      <h4 className="font-semibold">24/7 Support</h4>
-                      <p className="text-slate-600 dark:text-slate-300">Expert support when you need it most</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-              <div className="bg-gradient-to-br from-blue-500/10 to-purple-600/10 rounded-2xl p-8">
-                <div className="grid grid-cols-2 gap-6">
-                  <div className="text-center">
-                    <div className="text-3xl font-bold text-blue-600">10k+</div>
-                    <div className="text-sm text-slate-600 dark:text-slate-400">Active Teams</div>
-                  </div>
-                  <div className="text-center">
-                    <div className="text-3xl font-bold text-purple-600">1M+</div>
-                    <div className="text-sm text-slate-600 dark:text-slate-400">Alerts Processed</div>
-                  </div>
-                  <div className="text-center">
-                    <div className="text-3xl font-bold text-green-600">99.9%</div>
-                    <div className="text-sm text-slate-600 dark:text-slate-400">Uptime</div>
-                  </div>
-                  <div className="text-center">
-                    <div className="text-3xl font-bold text-orange-600">&lt;30s</div>
-                    <div className="text-sm text-slate-600 dark:text-slate-400">Average Response</div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </section>
-
         {/* CTA Section */}
         <section className="py-16 md:py-24 bg-gradient-to-r from-blue-600 to-purple-700">
           <div className="container mx-auto px-4 md:px-6 text-center">
             <h2 className="text-3xl md:text-4xl font-bold text-white mb-4">
-              Ready to Transform Your Monitoring?
+              Ready to Transform our Monitoring?
             </h2>
             <p className="text-xl text-blue-100 mb-8 max-w-2xl mx-auto">
-              Join thousands of teams who trust MCM Alerts for their critical monitoring needs.
+              Let MCM Alerts be the solution for our critical monitoring needs
             </p>
             <button 
               onClick={() => onNavigate('login')}
               className="inline-flex h-12 items-center justify-center rounded-lg bg-white text-blue-600 px-8 text-base font-semibold shadow-lg hover:shadow-xl transform hover:-translate-y-1 transition-all duration-200"
             >
-              Start Your Free Trial
+              Get Started
               <span className="ml-2">→</span>
             </button>
           </div>
