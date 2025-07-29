@@ -50,8 +50,10 @@ export const Header: React.FC<HeaderProps> = ({ onNavigate, onLogout, notificati
                     <Icon name="menu" className="h-6 w-6" />
                 </button>
                 <div className="flex items-center gap-2">
-                    <Icon name="mcmLogo" />
+                   <img src="/icon-192x192.png" alt="MCM Alerts" className="w-8 h-8" />
+                   <span className="text-lg font-semibold text-foreground hidden sm:inline">MCM Alerts</span>
                 </div>
+
             </div>
             
             <div className="flex items-center gap-1 sm:gap-2">
