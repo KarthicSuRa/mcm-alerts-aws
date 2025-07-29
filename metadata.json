@@ -1,0 +1,8 @@
+
+{
+  "name": "MCM Alerts",
+  "description": "A reliable notification system for monitoring website uptime, service status, and critical system events. Get instant alerts when it matters most.",
+  "requestFramePermissions": [
+    "notifications"
+  ]
+}
