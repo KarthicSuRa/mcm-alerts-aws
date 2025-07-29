@@ -27,4 +27,7 @@
     "typescript": "^5.2.2",
     "vite": "^5.0.0"
   }
+  "scripts": {
+    "build": "tsc --project tsconfig.build.json && vite build"
+  }
 }
