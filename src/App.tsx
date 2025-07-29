@@ -1,4 +1,4 @@
-
+/// <reference types="vite/client" />
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { LandingPage } from './pages/LandingPage';
@@ -184,14 +184,14 @@ function App() {
   // --- Push Notification Subscription Effect ---
   const saveSubscription = useCallback(async (subscription: PushSubscription) => {
     if (!session) return;
-    const { endpoint, keys } = JSON.parse(JSON.stringify(subscription));
+    const { endpoint, keys } = subscription.toJSON();
     
-    const subData = {
+    const subData: Database['public']['Tables']['push_subscriptions']['Insert'] = {
         user_id: session.user.id,
         endpoint: endpoint,
         keys: {
-            p256dh: keys.p256dh,
-            auth: keys.auth,
+            p256dh: keys!.p256dh,
+            auth: keys!.auth,
         },
     };
 
@@ -364,13 +364,13 @@ function App() {
         console.error("Error sending test alert:", error);
         alert(`Failed to send test alert: ${error.message}`);
     } else {
-        addToast({ ...newAlert, id: `toast-${Date.now()}`, comments: [], created_at: new Date().toISOString() });
+        addToast({ ...newAlert, id: `toast-${Date.now()}`, comments: [], created_at: new Date().toISOString() } as Notification);
         if (soundEnabled) {
             const audio = new Audio('https://cdn.freesound.org/previews/511/511485_6102149-lq.mp3');
             audio.play().catch(e => console.error("Error playing sound:", e));
         }
     }
-  }, [soundEnabled, snoozedUntil, topics]);
+  }, [soundEnabled, snoozedUntil, topics, session]);
 
   const updateNotification = async (notificationId: string, updates: NotificationUpdatePayload) => {
     const { error } = await supabase
