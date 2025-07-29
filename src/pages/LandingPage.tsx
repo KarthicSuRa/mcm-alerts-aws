@@ -1,22 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Monitor, Bell, Zap, MessageSquare, FileText, Settings, Shield, BarChart3, Code, ArrowRight, CheckCircle } from 'lucide-react';
-
-const iconMap = {
-  monitor: Monitor,
-  bell: Bell,
-  zap: Zap,
-  messageSquare: MessageSquare,
-  logs: FileText,
-  settings: Settings,
-  shield: Shield,
-  dashboard: BarChart3,
-  mcmLogo: Code
-};
-
-const Icon = ({ name, className = "", ...props }) => {
-  const IconComponent = iconMap[name] || Code;
-  return <IconComponent className={className} {...props} />;
-};
+import { Icon } from '../components/ui/Icon';
 
 interface LandingPageProps {
   onNavigate: (page: 'login') => void;
@@ -55,8 +38,6 @@ const features = [
   },
 ];
 
-
-
 export const LandingPage: React.FC<LandingPageProps> = ({ onNavigate }) => {
   const [isVisible, setIsVisible] = useState(false);
   const [activeFeature, setActiveFeature] = useState(0);
@@ -91,7 +72,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onNavigate }) => {
             className="inline-flex h-10 items-center justify-center rounded-lg bg-gradient-to-r from-blue-600 to-purple-700 px-6 text-sm font-semibold text-white shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 transition-all duration-200"
           >
             Get Started
-            <ArrowRight className="ml-2 w-4 h-4" />
+            <span className="ml-2">→</span>
           </button>
         </nav>
       </header>
@@ -124,7 +105,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onNavigate }) => {
                   className="inline-flex h-12 items-center justify-center rounded-lg bg-gradient-to-r from-blue-600 to-purple-700 px-8 text-base font-semibold text-white shadow-lg hover:shadow-xl transform hover:-translate-y-1 transition-all duration-200"
                 >
                   Start Free Trial
-                  <ArrowRight className="ml-2 w-5 h-5" />
+                  <span className="ml-2">→</span>
                 </button>
                 <button className="inline-flex h-12 items-center justify-center rounded-lg border-2 border-slate-300 dark:border-slate-600 px-8 text-base font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-all duration-200">
                   Watch Demo
@@ -137,9 +118,9 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onNavigate }) => {
                   Trusted by 10,000+ teams worldwide
                 </p>
                 <div className="flex justify-center items-center gap-8 flex-wrap opacity-60">
-                  {[Monitor, Shield, BarChart3, Zap, Bell].map((IconComp, i) => (
+                  {['monitor', 'shield', 'dashboard', 'zap', 'bell'].map((iconName, i) => (
                     <div key={i} className="w-12 h-12 bg-slate-200 dark:bg-slate-700 rounded-lg flex items-center justify-center">
-                      <IconComp className="w-6 h-6 text-slate-500 dark:text-slate-400" />
+                      <Icon name={iconName} className="w-6 h-6 text-slate-500 dark:text-slate-400" />
                     </div>
                   ))}
                 </div>
@@ -199,9 +180,9 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onNavigate }) => {
               <div className="hidden md:block absolute top-16 left-1/3 right-1/3 h-0.5 bg-gradient-to-r from-blue-500 to-purple-600"></div>
               
               {[
-                { title: 'Connect', desc: 'Integrate our REST API into your existing monitoring systems in minutes', icon: Zap },
-                { title: 'Configure', desc: 'Set up topics, notification rules, and team permissions with our intuitive interface', icon: Settings },
-                { title: 'Monitor', desc: 'Receive, manage, and resolve alerts efficiently with your team', icon: CheckCircle }
+                { title: 'Connect', desc: 'Integrate our REST API into your existing monitoring systems in minutes', icon: 'zap' },
+                { title: 'Configure', desc: 'Set up topics, notification rules, and team permissions with our intuitive interface', icon: 'settings' },
+                { title: 'Monitor', desc: 'Receive, manage, and resolve alerts efficiently with your team', icon: 'monitor' }
               ].map((step, i) => (
                 <div key={step.title} className="relative text-center group">
                   <div className="w-16 h-16 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white font-bold text-2xl mx-auto mb-6 group-hover:scale-110 transition-transform duration-200 shadow-lg">
@@ -211,6 +192,68 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onNavigate }) => {
                   <p className="text-slate-600 dark:text-slate-300">{step.desc}</p>
                 </div>
               ))}
+            </div>
+          </div>
+        </section>
+
+        {/* Benefits Section */}
+        <section className="py-16 md:py-24 bg-white dark:bg-slate-800">
+          <div className="container mx-auto px-4 md:px-6">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
+              <div>
+                <h2 className="text-3xl md:text-4xl font-bold mb-6">
+                  Built for Enterprise Scale
+                </h2>
+                <div className="space-y-4">
+                  <div className="flex items-start space-x-3">
+                    <div className="w-6 h-6 bg-green-500 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
+                      <span className="text-white text-sm">✓</span>
+                    </div>
+                    <div>
+                      <h4 className="font-semibold">99.9% Uptime SLA</h4>
+                      <p className="text-slate-600 dark:text-slate-300">Reliable infrastructure that scales with your needs</p>
+                    </div>
+                  </div>
+                  <div className="flex items-start space-x-3">
+                    <div className="w-6 h-6 bg-green-500 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
+                      <span className="text-white text-sm">✓</span>
+                    </div>
+                    <div>
+                      <h4 className="font-semibold">SOC 2 Compliant</h4>
+                      <p className="text-slate-600 dark:text-slate-300">Enterprise-grade security and compliance standards</p>
+                    </div>
+                  </div>
+                  <div className="flex items-start space-x-3">
+                    <div className="w-6 h-6 bg-green-500 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
+                      <span className="text-white text-sm">✓</span>
+                    </div>
+                    <div>
+                      <h4 className="font-semibold">24/7 Support</h4>
+                      <p className="text-slate-600 dark:text-slate-300">Expert support when you need it most</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div className="bg-gradient-to-br from-blue-500/10 to-purple-600/10 rounded-2xl p-8">
+                <div className="grid grid-cols-2 gap-6">
+                  <div className="text-center">
+                    <div className="text-3xl font-bold text-blue-600">10k+</div>
+                    <div className="text-sm text-slate-600 dark:text-slate-400">Active Teams</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-3xl font-bold text-purple-600">1M+</div>
+                    <div className="text-sm text-slate-600 dark:text-slate-400">Alerts Processed</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-3xl font-bold text-green-600">99.9%</div>
+                    <div className="text-sm text-slate-600 dark:text-slate-400">Uptime</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-3xl font-bold text-orange-600">&lt;30s</div>
+                    <div className="text-sm text-slate-600 dark:text-slate-400">Average Response</div>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </section>
@@ -229,7 +272,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onNavigate }) => {
               className="inline-flex h-12 items-center justify-center rounded-lg bg-white text-blue-600 px-8 text-base font-semibold shadow-lg hover:shadow-xl transform hover:-translate-y-1 transition-all duration-200"
             >
               Start Your Free Trial
-              <ArrowRight className="ml-2 w-5 h-5" />
+              <span className="ml-2">→</span>
             </button>
           </div>
         </section>
