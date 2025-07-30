@@ -67,8 +67,9 @@ function App() {
     return () => subscription.unsubscribe();
   }, []);
 
-  // --- Handle New Notifications (Sound & Toast) ---
-  const handleNewNotification = useCallback((notification: Notification) => {
+  // Replace the handleNewNotification function in App.tsx with this fixed version:
+
+const handleNewNotification = useCallback(async (notification: Notification) => {
     // Check if notifications are snoozed
     if (snoozedUntil && new Date() < snoozedUntil) {
       console.log("Alerts are snoozed. Notification sound/toast blocked.");
@@ -94,33 +95,63 @@ function App() {
     // Show browser push notification if supported and user has granted permission
     if ('Notification' in window && globalThis.Notification.permission === 'granted') {
       try {
-        const notificationOptions = {
-          body: notification.message || 'You have a new notification',
-          icon: '/favicon.ico',
-          badge: '/favicon.ico',
-          tag: notification.id, // Prevents duplicate notifications
-          requireInteraction: notification.severity === 'high',
-          silent: !soundEnabled,
-          data: {
-            notificationId: notification.id,
-            severity: notification.severity,
-            timestamp: notification.timestamp
-          },
-          actions: [
-            {
-              action: 'view',
-              title: 'View'
+        // Check if we have a service worker registration
+        if ('serviceWorker' in navigator) {
+          const registration = await navigator.serviceWorker.ready;
+          
+          // Use service worker for notifications with actions
+          const notificationOptions = {
+            body: notification.message || 'You have a new notification',
+            icon: '/favicon.ico',
+            badge: '/favicon.ico',
+            tag: notification.id,
+            requireInteraction: notification.severity === 'high',
+            silent: !soundEnabled,
+            data: {
+              notificationId: notification.id,
+              severity: notification.severity,
+              timestamp: notification.timestamp
             },
-            {
-              action: 'dismiss', 
-              title: 'Dismiss'
-            }
-          ]
-        };
+            actions: [
+              {
+                action: 'view',
+                title: 'View'
+              },
+              {
+                action: 'dismiss', 
+                title: 'Dismiss'
+              }
+            ]
+          };
 
-        new globalThis.Notification(notification.title || 'New Alert', notificationOptions);
+          await registration.showNotification(notification.title || 'New Alert', notificationOptions);
+        } else {
+          // Fallback to basic notification without actions
+          const basicOptions = {
+            body: notification.message || 'You have a new notification',
+            icon: '/favicon.ico',
+            tag: notification.id,
+            requireInteraction: notification.severity === 'high',
+            silent: !soundEnabled
+          };
+
+          new globalThis.Notification(notification.title || 'New Alert', basicOptions);
+        }
       } catch (error) {
         console.error('Error showing browser notification:', error);
+        
+        // Final fallback to basic notification
+        try {
+          const basicOptions = {
+            body: notification.message || 'You have a new notification',
+            icon: '/favicon.ico',
+            tag: notification.id,
+            silent: !soundEnabled
+          };
+          new globalThis.Notification(notification.title || 'New Alert', basicOptions);
+        } catch (fallbackError) {
+          console.error('Fallback notification also failed:', fallbackError);
+        }
       }
     }
   }, [soundEnabled, snoozedUntil, topics, addToast]);
