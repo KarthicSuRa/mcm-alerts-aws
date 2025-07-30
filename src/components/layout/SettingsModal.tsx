@@ -58,21 +58,38 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
     if (!isOpen) return null;
 
-    const handleRequestNotificationPermission = () => {
+    // Replace the handleRequestNotificationPermission function in SettingsModal with this:
+
+    const handleRequestNotificationPermission = async () => {
+        console.log('🔔 Enable button clicked', { permission });
+        
         if (!("Notification" in window)) {
             alert("This browser does not support desktop notification");
-        } else if (permission === "denied") {
+            return;
+        }
+        
+        if (permission === "denied") {
             alert("Notification permission was denied. Please enable it in your browser settings.");
-        } else if (permission === "default") {
-            window.Notification.requestPermission().then(p => {
-                setPermission(p);
-                if (p === "granted") {
-                    onSubscribeToPush();
-                }
-            });
+            return;
+        }
+        
+        try {
+            // Request permission first
+            const newPermission = await window.Notification.requestPermission();
+            console.log('Permission result:', newPermission);
+            setPermission(newPermission);
+            
+            if (newPermission === "granted") {
+                // Now subscribe to push notifications
+                onSubscribeToPush();
+            } else {
+                console.log('Permission not granted:', newPermission);
+            }
+        } catch (error) {
+            console.error('Error requesting permission:', error);
         }
     };
-    
+        
     const getPushComponent = () => {
         if (isPushLoading) {
             return <span className="text-sm font-medium text-muted-foreground">Loading...</span>;
