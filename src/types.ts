@@ -96,22 +96,38 @@ export interface Database {
       },
       push_subscriptions: {
         Row: {
-          id: number
-          created_at: string
-          user_id: string
-          endpoint: string
-          keys: { p256dh: string, auth: string }
-        }
+          id: string;
+          user_id: string;
+          endpoint: string;
+          keys: {
+            p256dh: string;
+            auth: string;
+          };
+          created_at: string;
+          updated_at: string;
+        };
         Insert: {
-          user_id: string
-          endpoint: string
-          keys: { p256dh: string, auth: string }
-        }
+          id?: string;
+          user_id: string;
+          endpoint: string;
+          keys: {
+            p256dh: string;
+            auth: string;
+          };
+          created_at?: string;
+          updated_at?: string;
+        };
         Update: {
-          user_id?: string
-          endpoint?: string
-          keys?: { p256dh: string, auth: string }
-        }
+          id?: string;
+          user_id?: string;
+          endpoint?: string;
+          keys?: {
+            p256dh: string;
+            auth: string;
+          };
+          created_at?: string;
+          updated_at?: string;
+        };
         Relationships: []
       }
     }
