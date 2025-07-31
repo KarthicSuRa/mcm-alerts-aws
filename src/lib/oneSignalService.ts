@@ -35,17 +35,15 @@ export class OneSignalService {
     );
   }
 
-  // Enhanced initialization with better error handling
+  // Simplified initialization
   async initialize(): Promise<void> {
-    // Prevent multiple initializations
     if (this.initialized) {
-      console.log('OneSignal already initialized, skipping...');
+      console.log('OneSignal already initialized');
       return;
     }
 
     if (this.initializing) {
-      console.log('OneSignal initialization in progress, waiting...');
-      // Wait for the current initialization to complete
+      console.log('OneSignal initialization in progress');
       while (this.initializing && this.retryCount < this.maxRetries) {
         await new Promise(resolve => setTimeout(resolve, 100));
       }
@@ -53,69 +51,48 @@ export class OneSignalService {
     }
 
     if (!this.appId) {
-      throw new Error('OneSignal App ID is not configured. Please set VITE_ONESIGNAL_APP_ID environment variable.');
+      throw new Error('OneSignal App ID is not configured');
     }
 
     if (!this.isPushSupported()) {
-      console.warn('Push notifications are not supported in this browser environment');
+      console.warn('Push notifications not supported');
       return;
     }
 
     this.initializing = true;
 
     try {
-      // Wait for OneSignal SDK to load
       await this.waitForOneSignal();
 
-      // Check if OneSignal is already initialized by trying to access its state
+      // Check if already initialized
       try {
-        // Try to access OneSignal API to check if it's initialized
         if (window.OneSignal?.User?.PushSubscription) {
-          const state = await window.OneSignal.User.PushSubscription.optedIn;
-          console.log('OneSignal appears to be already initialized, current state:', state);
+          await window.OneSignal.User.PushSubscription.optedIn;
           this.initialized = true;
           return;
         }
-      } catch (error) {
-        // OneSignal not initialized yet or API structure changed, proceed with initialization
-        console.log('OneSignal not yet initialized, proceeding...');
+      } catch {
+        // Not initialized yet, continue
       }
 
-      // Initialize OneSignal with updated configuration
       await window.OneSignal.init({
         appId: this.appId,
         allowLocalhostAsSecureOrigin: true,
-        
-        // Updated notification configuration
-        notifyButton: {
-          enable: false, // We handle our own UI
-        },
-        
-        // Disable automatic prompts
+        notifyButton: { enable: false },
         autoRegister: false,
-        
-        // Safari web push ID (if using Safari)
         safari_web_id: import.meta.env.VITE_SAFARI_WEB_ID,
-        
-        // Updated welcome notification config
-        welcomeNotification: {
-          disable: true,
-        },
-        
-        // Updated prompt configuration
+        welcomeNotification: { disable: true },
         promptOptions: {
           slidedown: {
-            prompts: [
-              {
-                type: "push",
-                autoPrompt: false,
-                text: {
-                  actionMessage: "Enable notifications to receive real-time alerts",
-                  acceptButton: "Allow",
-                  cancelButton: "No Thanks"
-                }
+            prompts: [{
+              type: "push",
+              autoPrompt: false,
+              text: {
+                actionMessage: "Enable notifications to receive real-time alerts",
+                acceptButton: "Allow",
+                cancelButton: "No Thanks"
               }
-            ]
+            }]
           }
         }
       });
@@ -126,20 +103,17 @@ export class OneSignalService {
     } catch (error) {
       console.error('Failed to initialize OneSignal:', error);
       
-      // Handle common initialization errors
-      if (error instanceof Error) {
-        if (error.message.includes('initialized') || error.message.includes('init')) {
-          console.log('OneSignal may already be initialized, marking as initialized');
-          this.initialized = true;
-          return;
-        }
+      // Handle already initialized error
+      if (error instanceof Error && error.message.includes('initialized')) {
+        this.initialized = true;
+        return;
       }
       
-      // Retry initialization if failed
+      // Retry logic
       if (this.retryCount < this.maxRetries) {
         this.retryCount++;
         this.initializing = false;
-        console.log(`Retrying OneSignal initialization (attempt ${this.retryCount}/${this.maxRetries})`);
+        console.log(`Retrying OneSignal initialization (${this.retryCount}/${this.maxRetries})`);
         await new Promise(resolve => setTimeout(resolve, 1000));
         return this.initialize();
       }
@@ -152,7 +126,7 @@ export class OneSignalService {
 
   private waitForOneSignal(): Promise<void> {
     return new Promise((resolve, reject) => {
-      const maxAttempts = 100; // Increased from 50
+      const maxAttempts = 100;
       let attempts = 0;
 
       const checkOneSignal = () => {
@@ -162,7 +136,7 @@ export class OneSignalService {
         } else if (attempts < maxAttempts) {
           setTimeout(checkOneSignal, 100);
         } else {
-          reject(new Error('OneSignal SDK failed to load after maximum attempts'));
+          reject(new Error('OneSignal SDK failed to load'));
         }
       };
 
@@ -170,7 +144,7 @@ export class OneSignalService {
     });
   }
 
-  // Enhanced permission request with better error handling
+  // Request notification permission
   async requestNotificationPermission(): Promise<boolean> {
     if (!this.initialized) {
       await this.initialize();
@@ -182,113 +156,94 @@ export class OneSignalService {
     }
 
     try {
-      // First check current permission using native API as fallback
+      // Check current permission
       if ('Notification' in window) {
-        const currentPermission = Notification.permission;
-        if (currentPermission === 'denied') {
-          console.log('Notification permission is denied');
-          return false;
-        }
-        if (currentPermission === 'granted') {
-          console.log('Notification permission already granted');
-          return true;
-        }
+        const permission = Notification.permission;
+        if (permission === 'denied') return false;
+        if (permission === 'granted') return true;
       }
 
-      // Try OneSignal's permission request
-      let permission = false;
+      // Request permission
+      let granted = false;
       try {
         if (window.OneSignal?.Notifications?.requestPermission) {
-          permission = await window.OneSignal.Notifications.requestPermission();
+          granted = await window.OneSignal.Notifications.requestPermission();
         } else {
-          // Fallback to native permission request
           const result = await Notification.requestPermission();
-          permission = result === 'granted';
+          granted = result === 'granted';
         }
-      } catch (error) {
-        console.error('OneSignal permission request failed, trying native API:', error);
-        // Fallback to native permission request
+      } catch {
         const result = await Notification.requestPermission();
-        permission = result === 'granted';
+        granted = result === 'granted';
       }
 
-      console.log('Permission result:', permission);
-      return permission;
-
+      return granted;
     } catch (error) {
-      console.error('Failed to request notification permission:', error);
+      console.error('Failed to request permission:', error);
       return false;
     }
   }
 
-  // Enhanced subscription status check
+  // Check subscription status
   async isSubscribed(): Promise<boolean> {
     if (!this.initialized) {
       await this.initialize();
     }
 
-    if (!this.isPushSupported()) {
-      return false;
-    }
+    if (!this.isPushSupported()) return false;
 
     try {
-      // Try multiple methods to check subscription status
       if (window.OneSignal?.User?.PushSubscription) {
         try {
           const optedIn = await window.OneSignal.User.PushSubscription.optedIn;
           return Boolean(optedIn);
-        } catch (error) {
-          console.warn('Failed to check optedIn status:', error);
-        }
-
-        try {
-          const id = await window.OneSignal.User.PushSubscription.id;
-          return Boolean(id);
-        } catch (error) {
-          console.warn('Failed to check subscription ID:', error);
+        } catch {
+          try {
+            const id = await window.OneSignal.User.PushSubscription.id;
+            return Boolean(id);
+          } catch {
+            // Fall through to legacy method
+          }
         }
       }
 
-      // Fallback method for older OneSignal versions
       if (window.OneSignal?.isPushNotificationsEnabled) {
         return await window.OneSignal.isPushNotificationsEnabled();
       }
 
       return false;
     } catch (error) {
-      console.error('Failed to check subscription status:', error);
+      console.error('Failed to check subscription:', error);
       return false;
     }
   }
 
-  // Enhanced player ID retrieval
+  // Get player ID
   async getPlayerId(): Promise<string | null> {
     if (!this.initialized) {
       await this.initialize();
     }
 
-    if (!this.isPushSupported()) {
-      return null;
-    }
+    if (!this.isPushSupported()) return null;
 
     try {
-      // Try new API first
+      // Try new API
       if (window.OneSignal?.User?.PushSubscription) {
         try {
           const id = await window.OneSignal.User.PushSubscription.id;
           if (id) return id;
-        } catch (error) {
-          console.warn('Failed to get player ID from User API:', error);
+        } catch {
+          // Continue to legacy API
         }
       }
 
-      // Try legacy API as fallback
+      // Try legacy API
       if (window.OneSignal?.getUserId) {
         try {
           const id = await window.OneSignal.getUserId();
           if (id) return id;
-        } catch (error) {
-          console.warn('Failed to get player ID from legacy API:', error);
+        } catch {
+          // No ID available
         }
       }
 
@@ -299,47 +254,43 @@ export class OneSignalService {
     }
   }
 
-  // Enhanced subscription method
+  // Subscribe to push notifications
   async subscribe(): Promise<string | null> {
     if (!this.initialized) {
       await this.initialize();
     }
 
     if (!this.isPushSupported()) {
-      throw new Error('Push notifications are not supported in this browser');
+      throw new Error('Push notifications not supported');
     }
 
     try {
-      // Request permission first
       const hasPermission = await this.requestNotificationPermission();
       if (!hasPermission) {
-        throw new Error('Notification permission denied');
+        throw new Error('Permission denied');
       }
 
-      // Try to subscribe using new API
+      // Subscribe using available API
       if (window.OneSignal?.User?.PushSubscription?.optIn) {
         try {
           await window.OneSignal.User.PushSubscription.optIn();
-        } catch (error) {
-          console.warn('Failed to opt in with new API:', error);
-          
-          // Try legacy API as fallback
+        } catch {
           if (window.OneSignal?.registerForPushNotifications) {
             await window.OneSignal.registerForPushNotifications();
           } else {
-            throw error;
+            throw new Error('No subscription API available');
           }
         }
       } else if (window.OneSignal?.registerForPushNotifications) {
         await window.OneSignal.registerForPushNotifications();
       } else {
-        throw new Error('OneSignal subscription API not available');
+        throw new Error('No subscription API available');
       }
       
-      // Wait for subscription to be processed
+      // Wait for subscription to process
       await new Promise(resolve => setTimeout(resolve, 2000));
       
-      // Get the player ID with retries
+      // Get player ID with retries
       let playerId = null;
       let attempts = 0;
       while (!playerId && attempts < 5) {
@@ -351,88 +302,83 @@ export class OneSignalService {
       }
       
       if (!playerId) {
-        throw new Error('Failed to get player ID after subscription');
+        throw new Error('Failed to get player ID');
       }
       
       return playerId;
     } catch (error) {
-      console.error('Failed to subscribe to notifications:', error);
+      console.error('Failed to subscribe:', error);
       throw error;
     }
   }
 
-  // Enhanced unsubscribe method
+  // Unsubscribe from push notifications
   async unsubscribe(): Promise<void> {
     if (!this.initialized) {
       await this.initialize();
     }
 
     try {
-      // Try new API first
       if (window.OneSignal?.User?.PushSubscription?.optOut) {
         await window.OneSignal.User.PushSubscription.optOut();
       } else if (window.OneSignal?.setSubscription) {
-        // Try legacy API
         await window.OneSignal.setSubscription(false);
       } else {
-        throw new Error('OneSignal unsubscribe API not available');
+        throw new Error('No unsubscribe API available');
       }
       
-      console.log('Successfully unsubscribed from notifications');
+      console.log('Successfully unsubscribed');
     } catch (error) {
-      console.error('Failed to unsubscribe from notifications:', error);
+      console.error('Failed to unsubscribe:', error);
       throw error;
     }
   }
 
-  // Enhanced tag management
+  // Set user tags
   async setUserTags(tags: Record<string, string>): Promise<void> {
     if (!this.initialized) {
       await this.initialize();
     }
 
     try {
-      // Try new API first
       if (window.OneSignal?.User?.addTags) {
         await window.OneSignal.User.addTags(tags);
       } else if (window.OneSignal?.sendTags) {
-        // Try legacy API
         await window.OneSignal.sendTags(tags);
       } else {
-        throw new Error('OneSignal tags API not available');
+        throw new Error('No tags API available');
       }
       
-      console.log('User tags set successfully:', tags);
+      console.log('Tags set:', tags);
     } catch (error) {
-      console.error('Failed to set user tags:', error);
+      console.error('Failed to set tags:', error);
       throw error;
     }
   }
 
+  // Remove user tags
   async removeUserTags(tagKeys: string[]): Promise<void> {
     if (!this.initialized) {
       await this.initialize();
     }
 
     try {
-      // Try new API first
       if (window.OneSignal?.User?.removeTags) {
         await window.OneSignal.User.removeTags(tagKeys);
       } else if (window.OneSignal?.deleteTags) {
-        // Try legacy API
         await window.OneSignal.deleteTags(tagKeys);
       } else {
-        throw new Error('OneSignal remove tags API not available');
+        throw new Error('No remove tags API available');
       }
       
-      console.log('User tags removed successfully:', tagKeys);
+      console.log('Tags removed:', tagKeys);
     } catch (error) {
-      console.error('Failed to remove user tags:', error);
+      console.error('Failed to remove tags:', error);
       throw error;
     }
   }
 
-  // Database operations remain the same
+  // Database operations
   async savePlayerIdToDatabase(userId: string): Promise<void> {
     const playerId = await this.getPlayerId();
     if (!playerId) {
@@ -450,13 +396,10 @@ export class OneSignalService {
           onConflict: 'user_id'
         });
 
-      if (error) {
-        throw error;
-      }
-
-      console.log('Player ID saved to database:', playerId);
+      if (error) throw error;
+      console.log('Player ID saved:', playerId);
     } catch (error) {
-      console.error('Failed to save player ID to database:', error);
+      console.error('Failed to save player ID:', error);
       throw error;
     }
   }
@@ -468,25 +411,21 @@ export class OneSignalService {
         .delete()
         .eq('user_id', userId);
 
-      if (error) {
-        throw error;
-      }
-
+      if (error) throw error;
       console.log('Player ID removed from database');
     } catch (error) {
-      console.error('Failed to remove player ID from database:', error);
+      console.error('Failed to remove player ID:', error);
       throw error;
     }
   }
 
-  // Enhanced event listeners with better error handling
+  // Event listeners
   onSubscriptionChange(callback: (subscribed: boolean) => void): void {
     if (!this.initialized) {
-      console.warn('OneSignal not initialized yet, will set up listener after initialization');
       this.initialize().then(() => {
         this.setupSubscriptionChangeListener(callback);
       }).catch(error => {
-        console.error('Failed to initialize OneSignal for subscription listener:', error);
+        console.error('Failed to setup subscription listener:', error);
       });
       return;
     }
@@ -496,32 +435,25 @@ export class OneSignalService {
 
   private setupSubscriptionChangeListener(callback: (subscribed: boolean) => void): void {
     try {
-      // Try new API first
       if (window.OneSignal?.User?.PushSubscription?.addEventListener) {
         window.OneSignal.User.PushSubscription.addEventListener('change', (event: any) => {
           const isSubscribed = event?.current?.optedIn || false;
           callback(isSubscribed);
         });
       } else if (window.OneSignal?.on) {
-        // Try legacy API
-        window.OneSignal.on('subscriptionChange', (isSubscribed: boolean) => {
-          callback(isSubscribed);
-        });
-      } else {
-        console.warn('OneSignal subscription change listener API not available');
+        window.OneSignal.on('subscriptionChange', callback);
       }
     } catch (error) {
-      console.error('Failed to set up subscription change listener:', error);
+      console.error('Failed to setup subscription listener:', error);
     }
   }
 
   onNotificationClick(callback: (event: any) => void): void {
     if (!this.initialized) {
-      console.warn('OneSignal not initialized yet, will set up listener after initialization');
       this.initialize().then(() => {
         this.setupNotificationClickListener(callback);
       }).catch(error => {
-        console.error('Failed to initialize OneSignal for notification click listener:', error);
+        console.error('Failed to setup click listener:', error);
       });
       return;
     }
@@ -531,26 +463,21 @@ export class OneSignalService {
 
   private setupNotificationClickListener(callback: (event: any) => void): void {
     try {
-      // Try new API first
       if (window.OneSignal?.Notifications?.addEventListener) {
         window.OneSignal.Notifications.addEventListener('click', callback);
       } else if (window.OneSignal?.on) {
-        // Try legacy API
         window.OneSignal.on('notificationClick', callback);
-      } else {
-        console.warn('OneSignal notification click listener API not available');
       }
     } catch (error) {
-      console.error('Failed to set up notification click listener:', error);
+      console.error('Failed to setup click listener:', error);
     }
   }
 
-  // Utility method to check if OneSignal is properly loaded
+  // Utility methods
   isLoaded(): boolean {
     return !!(window.OneSignal && typeof window.OneSignal.init === 'function');
   }
 
-  // Method to get current OneSignal state for debugging
   async getDebugInfo(): Promise<any> {
     if (!this.initialized) {
       return { error: 'OneSignal not initialized' };
@@ -565,7 +492,6 @@ export class OneSignalService {
         pushSupported: this.isPushSupported(),
       };
 
-      // Try to get additional info if available
       try {
         if ('Notification' in window) {
           info.notificationPermission = Notification.permission;
@@ -574,12 +500,14 @@ export class OneSignalService {
           info.optedIn = await window.OneSignal.User.PushSubscription.optedIn;
         }
       } catch (error) {
-        info.additionalInfoError = error.message;
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        info.additionalInfoError = errorMessage;
       }
 
       return info;
     } catch (error) {
-      return { error: error.message };
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      return { error: errorMessage };
     }
   }
 }
