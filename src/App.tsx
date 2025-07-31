@@ -42,13 +42,19 @@ function App() {
   // OneSignal service instance
   const oneSignalService = OneSignalService.getInstance();
 
-  const addToast = (notification: Notification) => {
-    setToasts(prev => [{...notification}, ...prev]);
-  };
+  const addToast = useCallback((notification: Notification) => {
+    setToasts(prev => {
+      // Check if toast already exists to prevent duplicates
+      if (prev.some(t => t.id === notification.id)) {
+        return prev;
+      }
+      return [{...notification}, ...prev];
+    });
+  }, []);
 
-  const removeToast = (id: string) => {
+  const removeToast = useCallback((id: string) => {
     setToasts(prev => prev.filter(t => t.id !== id));
-  };
+  }, []);
 
   const systemStatus: SystemStatusData = useMemo(() => ({
     service: 'Ready',
@@ -88,7 +94,8 @@ function App() {
         // Set up notification click listener
         oneSignalService.onNotificationClick((event: any) => {
           console.log('OneSignal notification clicked:', event);
-          // Handle notification click - could navigate to specific page
+          // Handle notification click - navigate to most recent notification
+          handleNotificationIconClick();
         });
 
         // If user is logged in and subscribed, save player ID to database
@@ -119,15 +126,45 @@ function App() {
       return;
     }
 
-    // Show toast notification
+    // Show toast notification for both mobile and web browsers
     addToast(notification);
 
     // Play sound if enabled
     if (soundEnabled) {
-      const audio = new Audio('/alert.wav');
-      audio.play().catch(e => console.error("Error playing sound:", e));
+      try {
+        const audio = new Audio('/alert.wav');
+        audio.volume = 0.5; // Set reasonable volume
+        await audio.play();
+      } catch (e) {
+        console.error("Error playing sound:", e);
+      }
     }
-  }, [soundEnabled, snoozedUntil, topics]);
+  }, [soundEnabled, snoozedUntil, topics, addToast]);
+
+  // Handle notification icon click - navigate to most recent notification
+  const handleNotificationIconClick = useCallback(() => {
+    if (notifications.length > 0) {
+      // Sort by created_at to get the most recent
+      const mostRecentNotification = notifications.sort((a, b) => 
+        new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      )[0];
+      
+      // Navigate to dashboard if not already there
+      if (currentPage !== 'dashboard') {
+        setCurrentPage('dashboard');
+      }
+      
+      // Mark the most recent notification as read if it's new
+      if (mostRecentNotification.status === 'new') {
+        updateNotification(mostRecentNotification.id, { status: 'acknowledged' });
+      }
+      
+      // Close sidebar on mobile
+      setIsSidebarOpen(false);
+      
+      console.log('Navigated to most recent notification:', mostRecentNotification.id);
+    }
+  }, [notifications, currentPage]);
 
   // --- Data Fetching and Realtime Subscriptions ---
   useEffect(() => {
@@ -374,13 +411,27 @@ function App() {
         console.error("Error sending test alert:", error);
         alert(`Failed to send test alert: ${error.message}`);
     } else {
-        addToast({ ...newAlert, id: `toast-${Date.now()}`, comments: [], created_at: new Date().toISOString() } as Notification);
+        // Add toast for immediate feedback
+        const toastNotification = { 
+          ...newAlert, 
+          id: `toast-${Date.now()}`, 
+          comments: [], 
+          created_at: new Date().toISOString() 
+        } as Notification;
+        
+        addToast(toastNotification);
+        
         if (soundEnabled) {
-            const audio = new Audio('/alert.wav');
-            audio.play().catch(e => console.error("Error playing sound:", e));
+            try {
+              const audio = new Audio('/alert.wav');
+              audio.volume = 0.5;
+              await audio.play();
+            } catch (e) {
+              console.error("Error playing sound:", e);
+            }
         }
     }
-  }, [soundEnabled, snoozedUntil, topics, session]);
+  }, [soundEnabled, snoozedUntil, topics, session, addToast]);
 
   const updateNotification = async (notificationId: string, updates: NotificationUpdatePayload) => {
     const { error } = await supabase
@@ -399,43 +450,58 @@ function App() {
   }
 
   const handleAddTopic = async (name: string, description: string) => {
-    const { error } = await supabase.from('topics').insert([{ name, description }]);
-    if(error) console.error("Error adding topic:", error);
+    try {
+      const { error } = await supabase.from('topics').insert([{ name, description }]);
+      if(error) {
+        console.error("Error adding topic:", error);
+        throw new Error(error.message);
+      }
+    } catch (error) {
+      console.error("Error adding topic:", error);
+      throw error;
+    }
   }
   
   const handleToggleSubscription = async (topic: Topic) => {
     if(!session) return;
 
-    if(topic.subscribed && topic.subscription_id) {
-        // Unsubscribe
-        const { error } = await supabase.from('topic_subscriptions').delete().eq('id', topic.subscription_id);
-        if(error) {
-          console.error("Error unsubscribing:", error);
-        } else {
-          // Remove OneSignal tag
-          if (isPushEnabled) {
-            try {
-              await oneSignalService.removeUserTags([`topic_${topic.id}`]);
-            } catch (error) {
-              console.error('Error removing OneSignal tag:', error);
+    try {
+      if(topic.subscribed && topic.subscription_id) {
+          // Unsubscribe
+          const { error } = await supabase.from('topic_subscriptions').delete().eq('id', topic.subscription_id);
+          if(error) {
+            console.error("Error unsubscribing:", error);
+            throw new Error(error.message);
+          } else {
+            // Remove OneSignal tag
+            if (isPushEnabled) {
+              try {
+                await oneSignalService.removeUserTags([`topic_${topic.id}`]);
+              } catch (error) {
+                console.error('Error removing OneSignal tag:', error);
+              }
             }
           }
-        }
-    } else {
-        // Subscribe
-        const { error } = await supabase.from('topic_subscriptions').insert([{ user_id: session.user.id, topic_id: topic.id }]);
-        if(error) {
-          console.error("Error subscribing:", error);
-        } else {
-          // Add OneSignal tag
-          if (isPushEnabled) {
-            try {
-              await oneSignalService.setUserTags({ [`topic_${topic.id}`]: 'true' });
-            } catch (error) {
-              console.error('Error setting OneSignal tag:', error);
+      } else {
+          // Subscribe
+          const { error } = await supabase.from('topic_subscriptions').insert([{ user_id: session.user.id, topic_id: topic.id }]);
+          if(error) {
+            console.error("Error subscribing:", error);
+            throw new Error(error.message);
+          } else {
+            // Add OneSignal tag
+            if (isPushEnabled) {
+              try {
+                await oneSignalService.setUserTags({ [`topic_${topic.id}`]: 'true' });
+              } catch (error) {
+                console.error('Error setting OneSignal tag:', error);
+              }
             }
           }
-        }
+      }
+    } catch (error) {
+      console.error("Error toggling subscription:", error);
+      throw error;
     }
   }
 
@@ -461,6 +527,7 @@ function App() {
       openSettings: () => setIsSettingsOpen(true),
       systemStatus,
       session,
+      onNotificationIconClick: handleNotificationIconClick, // Pass the click handler
   };
 
   switch (currentPage) {
@@ -526,10 +593,19 @@ function App() {
             />
         </ErrorBoundary>
       </div>
-       <div aria-live="assertive" className="fixed inset-0 flex items-end px-4 py-6 pointer-events-none sm:p-6 sm:items-start z-[100]">
+      
+      {/* Enhanced Toast notifications container - Works on both mobile and web browsers */}
+      <div 
+        aria-live="assertive" 
+        className="fixed inset-0 flex items-end px-4 py-6 pointer-events-none sm:p-6 sm:items-start z-[100]"
+      >
         <div className="w-full flex flex-col items-center space-y-4 sm:items-end">
             {toasts.map(toast => (
-                <NotificationToast key={toast.id} notification={toast} onClose={() => removeToast(toast.id)} />
+                <NotificationToast 
+                  key={toast.id} 
+                  notification={toast} 
+                  onClose={() => removeToast(toast.id)} 
+                />
             ))}
         </div>
       </div>
