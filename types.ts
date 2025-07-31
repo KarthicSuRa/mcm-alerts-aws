@@ -1,4 +1,3 @@
-
 import { Session } from '@supabase/supabase-js';
 
 export interface Database {
@@ -8,6 +7,7 @@ export interface Database {
         Row: {
           id: string
           created_at: string
+          updated_at: string
           type: string
           title: string
           message: string
@@ -18,16 +18,22 @@ export interface Database {
           topic_id: string | null
         }
         Insert: {
-          type: string
+          id?: string
+          created_at?: string
+          updated_at?: string
+          type?: string
           title: string
           message: string
-          severity: 'low' | 'medium' | 'high'
-          status: 'new' | 'acknowledged' | 'resolved'
-          timestamp: string
+          severity?: 'low' | 'medium' | 'high'
+          status?: 'new' | 'acknowledged' | 'resolved'
+          timestamp?: string
           site?: string | null
           topic_id?: string | null
         }
         Update: {
+          id?: string
+          created_at?: string
+          updated_at?: string
           type?: string
           title?: string
           message?: string
@@ -37,61 +43,146 @@ export interface Database {
           site?: string | null
           topic_id?: string | null
         }
-        Relationships: []
-      }
-      comments: {
-        Row: {
-          id: string
-          created_at: string
-          text: string
-          notification_id: string
-          user_id: string
-        }
-        Insert: {
-          text: string
-          notification_id: string
-          user_id: string
-        }
-        Update: {
-          text?: string
-          notification_id?: string
-          user_id?: string
-        }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "notifications_topic_id_fkey"
+            columns: ["topic_id"]
+            isOneToOne: false
+            referencedRelation: "topics"
+            referencedColumns: ["id"]
+          }
+        ]
       }
       topics: {
         Row: {
           id: string
           created_at: string
+          updated_at: string
           name: string
-          description: string
+          description: string | null
         }
         Insert: {
+          id?: string
+          created_at?: string
+          updated_at?: string
           name: string
-          description: string
+          description?: string | null
         }
         Update: {
+          id?: string
+          created_at?: string
+          updated_at?: string
           name?: string
-          description?: string
+          description?: string | null
         }
         Relationships: []
       }
       topic_subscriptions: {
         Row: {
-          id: number
+          id: string
           created_at: string
           user_id: string
           topic_id: string
         }
         Insert: {
+          id?: string
+          created_at?: string
           user_id: string
           topic_id: string
         }
         Update: {
+          id?: string
+          created_at?: string
           user_id?: string
           topic_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "topic_subscriptions_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "topic_subscriptions_topic_id_fkey"
+            columns: ["topic_id"]
+            isOneToOne: false
+            referencedRelation: "topics"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      comments: {
+        Row: {
+          id: string
+          created_at: string
+          notification_id: string
+          user_id: string
+          text: string
+        }
+        Insert: {
+          id?: string
+          created_at?: string
+          notification_id: string
+          user_id: string
+          text: string
+        }
+        Update: {
+          id?: string
+          created_at?: string
+          notification_id?: string
+          user_id?: string
+          text?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "comments_notification_id_fkey"
+            columns: ["notification_id"]
+            isOneToOne: false
+            referencedRelation: "notifications"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "comments_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      onesignal_players: {
+        Row: {
+          id: string
+          created_at: string
+          updated_at: string
+          user_id: string
+          player_id: string
+        }
+        Insert: {
+          id?: string
+          created_at?: string
+          updated_at?: string
+          user_id: string
+          player_id: string
+        }
+        Update: {
+          id?: string
+          created_at?: string
+          updated_at?: string
+          user_id?: string
+          player_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "onesignal_players_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: true
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          }
+        ]
       }
     }
     Views: {
@@ -108,7 +199,6 @@ export interface Database {
     }
   }
 }
-
 
 export type Theme = 'light' | 'dark';
 
@@ -131,7 +221,7 @@ export interface Comment {
 }
 
 export interface Notification {
-  id:string;
+  id: string;
   type: string;
   title: string;
   message: string;
@@ -142,6 +232,7 @@ export interface Notification {
   comments: Comment[];
   topic_id: string | null;
   created_at: string;
+  updated_at: string;
 }
 
 export type NotificationUpdatePayload = Database['public']['Tables']['notifications']['Update'];
@@ -149,19 +240,20 @@ export type NotificationUpdatePayload = Database['public']['Tables']['notificati
 export interface Topic {
   id: string;
   name: string;
-  description: string;
+  description: string | null;
   created_at: string;
+  updated_at: string;
   subscribed?: boolean;
-  subscription_id?: number;
+  subscription_id?: string;
 }
 
 export interface AuditLog {
-    id: string;
-    timestamp: string;
-    user: string;
-    action: string;
-    details: string;
-    notificationId: string;
+  id: string;
+  timestamp: string;
+  user: string;
+  action: string;
+  details: string;
+  notificationId: string;
 }
 
 export interface SystemStatusData {
@@ -169,6 +261,14 @@ export interface SystemStatusData {
   database: 'Connected' | 'Disconnected';
   push: 'Supported' | 'Unsupported';
   subscription: 'Active' | 'Inactive';
+}
+
+export interface OneSignalPlayer {
+  id: string;
+  user_id: string;
+  player_id: string;
+  created_at: string;
+  updated_at: string;
 }
 
 export type { Session };
