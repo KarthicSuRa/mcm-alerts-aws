@@ -35,7 +35,19 @@ export class OneSignalService {
     );
   }
 
-  // Simplified initialization
+  // Enhanced mobile browser detection
+  private isMobileBrowser(): boolean {
+    const userAgent = navigator.userAgent.toLowerCase();
+    return /android|iphone|ipad|ipod|blackberry|iemobile|opera mini/i.test(userAgent);
+  }
+
+  // Check if iOS Safari (which has special push notification requirements)
+  private isIOSSafari(): boolean {
+    const userAgent = navigator.userAgent.toLowerCase();
+    return /iphone|ipad|ipod/.test(userAgent) && /safari/.test(userAgent) && !/chrome|crios|fxios/.test(userAgent);
+  }
+
+  // Simplified initialization with mobile browser enhancements
   async initialize(): Promise<void> {
     if (this.initialized) {
       console.log('OneSignal already initialized');
@@ -55,7 +67,7 @@ export class OneSignalService {
     }
 
     if (!this.isPushSupported()) {
-      console.warn('Push notifications not supported');
+      console.warn('Push notifications not supported on this browser');
       return;
     }
 
@@ -75,7 +87,11 @@ export class OneSignalService {
         // Not initialized yet, continue
       }
 
-      await window.OneSignal.init({
+      // Mobile-specific configuration
+      const isMobile = this.isMobileBrowser();
+      const isIOS = this.isIOSSafari();
+
+      const config = {
         appId: this.appId,
         allowLocalhostAsSecureOrigin: true,
         notifyButton: { enable: false },
@@ -88,17 +104,47 @@ export class OneSignalService {
               type: "push",
               autoPrompt: false,
               text: {
-                actionMessage: "Enable notifications to receive real-time alerts",
+                actionMessage: isMobile 
+                  ? "Get instant alerts on your phone" 
+                  : "Enable notifications to receive real-time alerts",
                 acceptButton: "Allow",
                 cancelButton: "No Thanks"
               }
             }]
+          },
+          // Enhanced mobile prompt options
+          ...(isMobile && {
+            customlink: {
+              enabled: true,
+              style: "button",
+              size: "medium",
+              color: {
+                button: '#007bff',
+                text: '#ffffff'
+              },
+              text: {
+                subscribe: "Enable Push Notifications",
+                unsubscribe: "Disable Push Notifications"
+              }
+            }
+          })
+        },
+        // iOS-specific settings
+        ...(isIOS && {
+          safari_web_id: import.meta.env.VITE_SAFARI_WEB_ID,
+          promptOptions: {
+            native: {
+              enabled: true,
+              autoPrompt: false
+            }
           }
-        }
-      });
+        })
+      };
+
+      await window.OneSignal.init(config);
 
       this.initialized = true;
-      console.log('OneSignal initialized successfully');
+      console.log(`OneSignal initialized successfully for ${isMobile ? 'mobile' : 'desktop'} browser`);
       
     } catch (error) {
       console.error('Failed to initialize OneSignal:', error);
@@ -144,7 +190,7 @@ export class OneSignalService {
     });
   }
 
-  // Request notification permission
+  // Enhanced notification permission request with mobile support
   async requestNotificationPermission(): Promise<boolean> {
     if (!this.initialized) {
       await this.initialize();
@@ -163,11 +209,19 @@ export class OneSignalService {
         if (permission === 'granted') return true;
       }
 
+      // Mobile-specific permission handling
+      const isMobile = this.isMobileBrowser();
+      const isIOS = this.isIOSSafari();
+
       // Request permission
       let granted = false;
       try {
         if (window.OneSignal?.Notifications?.requestPermission) {
           granted = await window.OneSignal.Notifications.requestPermission();
+        } else if (isIOS && window.OneSignal?.registerForPushNotifications) {
+          // iOS Safari specific handling
+          await window.OneSignal.registerForPushNotifications();
+          granted = Notification.permission === 'granted';
         } else {
           const result = await Notification.requestPermission();
           granted = result === 'granted';
@@ -177,6 +231,10 @@ export class OneSignalService {
         granted = result === 'granted';
       }
 
+      if (granted && isMobile) {
+        console.log('Push notifications enabled for mobile browser');
+      }
+
       return granted;
     } catch (error) {
       console.error('Failed to request permission:', error);
@@ -184,7 +242,7 @@ export class OneSignalService {
     }
   }
 
-  // Check subscription status
+  // Enhanced subscription status check
   async isSubscribed(): Promise<boolean> {
     if (!this.initialized) {
       await this.initialize();
@@ -218,7 +276,7 @@ export class OneSignalService {
     }
   }
 
-  // Get player ID
+  // Enhanced player ID retrieval
   async getPlayerId(): Promise<string | null> {
     if (!this.initialized) {
       await this.initialize();
@@ -254,20 +312,28 @@ export class OneSignalService {
     }
   }
 
-  // Subscribe to push notifications
+  // Enhanced subscription with mobile browser support
   async subscribe(): Promise<string | null> {
     if (!this.initialized) {
       await this.initialize();
     }
 
     if (!this.isPushSupported()) {
-      throw new Error('Push notifications not supported');
+      throw new Error('Push notifications not supported on this browser');
     }
+
+    const isMobile = this.isMobileBrowser();
+    const isIOS = this.isIOSSafari();
 
     try {
       const hasPermission = await this.requestNotificationPermission();
       if (!hasPermission) {
-        throw new Error('Permission denied');
+        throw new Error('Notification permission denied');
+      }
+
+      // Mobile-specific subscription flow
+      if (isMobile) {
+        console.log('Subscribing mobile browser to push notifications');
       }
 
       // Subscribe using available API
@@ -287,13 +353,16 @@ export class OneSignalService {
         throw new Error('No subscription API available');
       }
       
-      // Wait for subscription to process
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      // Wait for subscription to process (longer wait for mobile)
+      const waitTime = isMobile ? 3000 : 2000;
+      await new Promise(resolve => setTimeout(resolve, waitTime));
       
-      // Get player ID with retries
+      // Get player ID with retries (more retries for mobile)
       let playerId = null;
       let attempts = 0;
-      while (!playerId && attempts < 5) {
+      const maxAttempts = isMobile ? 8 : 5;
+      
+      while (!playerId && attempts < maxAttempts) {
         playerId = await this.getPlayerId();
         if (!playerId) {
           await new Promise(resolve => setTimeout(resolve, 1000));
@@ -302,9 +371,10 @@ export class OneSignalService {
       }
       
       if (!playerId) {
-        throw new Error('Failed to get player ID');
+        throw new Error('Failed to get player ID after subscription');
       }
       
+      console.log(`Successfully subscribed ${isMobile ? 'mobile' : 'desktop'} browser with player ID:`, playerId);
       return playerId;
     } catch (error) {
       console.error('Failed to subscribe:', error);
@@ -312,7 +382,7 @@ export class OneSignalService {
     }
   }
 
-  // Unsubscribe from push notifications
+  // Enhanced unsubscription
   async unsubscribe(): Promise<void> {
     if (!this.initialized) {
       await this.initialize();
@@ -327,7 +397,8 @@ export class OneSignalService {
         throw new Error('No unsubscribe API available');
       }
       
-      console.log('Successfully unsubscribed');
+      const isMobile = this.isMobileBrowser();
+      console.log(`Successfully unsubscribed ${isMobile ? 'mobile' : 'desktop'} browser`);
     } catch (error) {
       console.error('Failed to unsubscribe:', error);
       throw error;
@@ -419,7 +490,7 @@ export class OneSignalService {
     }
   }
 
-  // Event listeners
+  // Event listeners with mobile browser enhancements
   onSubscriptionChange(callback: (subscribed: boolean) => void): void {
     if (!this.initialized) {
       this.initialize().then(() => {
@@ -464,9 +535,15 @@ export class OneSignalService {
   private setupNotificationClickListener(callback: (event: any) => void): void {
     try {
       if (window.OneSignal?.Notifications?.addEventListener) {
-        window.OneSignal.Notifications.addEventListener('click', callback);
+        window.OneSignal.Notifications.addEventListener('click', (event: any) => {
+          console.log('Notification clicked, navigating to most recent notification');
+          callback(event);
+        });
       } else if (window.OneSignal?.on) {
-        window.OneSignal.on('notificationClick', callback);
+        window.OneSignal.on('notificationClick', (event: any) => {
+          console.log('Notification clicked, navigating to most recent notification');
+          callback(event);
+        });
       }
     } catch (error) {
       console.error('Failed to setup click listener:', error);
@@ -484,12 +561,18 @@ export class OneSignalService {
     }
 
     try {
+      const isMobile = this.isMobileBrowser();
+      const isIOS = this.isIOSSafari();
+      
       const info: any = {
         initialized: this.initialized,
         isLoaded: this.isLoaded(),
         isSubscribed: await this.isSubscribed(),
         playerId: await this.getPlayerId(),
         pushSupported: this.isPushSupported(),
+        isMobile,
+        isIOS,
+        userAgent: navigator.userAgent,
       };
 
       try {
@@ -508,6 +591,40 @@ export class OneSignalService {
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       return { error: errorMessage };
+    }
+  }
+
+  // Enhanced mobile browser test method
+  async testNotification(): Promise<boolean> {
+    if (!this.initialized) {
+      await this.initialize();
+    }
+
+    const isMobile = this.isMobileBrowser();
+    
+    try {
+      const isSubscribed = await this.isSubscribed();
+      if (!isSubscribed) {
+        console.warn('Cannot test notification: user not subscribed');
+        return false;
+      }
+
+      // For mobile browsers, we can't directly trigger notifications
+      // but we can verify the subscription is working
+      if (isMobile) {
+        console.log('Mobile browser subscription test: checking player ID');
+        const playerId = await this.getPlayerId();
+        return Boolean(playerId);
+      }
+
+      // For desktop browsers, we could potentially trigger a test notification
+      // This would require backend integration
+      console.log('Desktop browser subscription test completed');
+      return true;
+      
+    } catch (error) {
+      console.error('Notification test failed:', error);
+      return false;
     }
   }
 }
