@@ -1,32 +1,30 @@
-declare const Deno: any;
-
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
-import webpush from 'https://esm.sh/web-push@3.6.7'
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-}
+  'Access-Control-Allow-Methods': 'POST, GET, OPTIONS, PUT, DELETE'
+};
 
-console.log("Create-notification function booting up!");
+console.log("Create-notification function starting...");
 
-const vapidPublicKey = Deno.env.get('VAPID_PUBLIC_KEY');
-const vapidPrivateKey = Deno.env.get('VAPID_PRIVATE_KEY');
+const oneSignalAppId = Deno.env.get('VITE_ONESIGNAL_APP_ID');
+const oneSignalApiKey = Deno.env.get('ONESIGNAL_REST_API_KEY');
 
-if (vapidPublicKey && vapidPrivateKey) {
-    webpush.setVapidDetails(
-        'mailto:admin@mcmalerts.com', // Update this to your admin email
-        vapidPublicKey,
-        vapidPrivateKey
-    );
-    console.log("VAPID details set.");
+if (oneSignalAppId && oneSignalApiKey) {
+  console.log("OneSignal configured successfully");
 } else {
-    console.warn("VAPID keys not found in environment. Push notifications will be disabled.");
+  console.warn("OneSignal keys not found - push notifications disabled");
 }
 
-Deno.serve(async (req: Request) => {
+Deno.serve(async (req) => {
+  console.log(`${req.method} request received`);
+  
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders })
+    return new Response(null, {
+      status: 200,
+      headers: corsHeaders
+    });
   }
 
   try {
@@ -36,135 +34,188 @@ Deno.serve(async (req: Request) => {
     );
 
     const requestData = await req.json();
-    console.log('Received request data:', requestData);
-    
-    // Handle both your frontend format and external API format
-    const {
-      type = 'server_alert',
-      title,
-      message,
-      severity,
-      site,
-      topic_id,
-      // Alternative field names for external APIs
-      priority,
-      status = 'new',
-      timestamp = new Date().toISOString()
-    } = requestData;
-    
-    // Basic validation
+    console.log('Request data:', requestData);
+
+    const { type, title, message, site, priority, topic_id, severity } = requestData;
+
     if (!title || !message) {
-      return new Response(JSON.stringify({ 
-        error: 'Missing required fields: title and message are required' 
+      return new Response(JSON.stringify({
+        error: 'Missing required fields: title and message'
       }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 400,
+        headers: {
+          ...corsHeaders,
+          'Content-Type': 'application/json'
+        },
+        status: 400
       });
     }
-    
-    // Map severity/priority to your database format
-    const severityMap: {[key: string]: 'low' | 'medium' | 'high'} = {
+
+    const severityMap = {
       'low': 'low',
       'medium': 'medium',
       'high': 'high',
-      'critical': 'high' // Map critical to high since your DB doesn't have critical
+      'critical': 'high'
     };
 
-    const finalSeverity = severity || 
-                         (priority ? severityMap[priority.toLowerCase()] : null) || 
-                         'medium';
+    const finalSeverity = severity || (priority ? severityMap[priority.toLowerCase()] : null) || 'medium';
 
     const newNotification = {
-        type,
-        title,
-        message,
-        severity: finalSeverity,
-        status,
-        timestamp,
-        site: site || null,
-        topic_id: topic_id || null,
+      type: type || 'custom',
+      title,
+      message,
+      severity: finalSeverity,
+      status: 'new',
+      timestamp: new Date().toISOString(),
+      site: site || null,
+      topic_id: topic_id || null
     };
-    
+
     console.log('Inserting notification:', newNotification);
-    
-    const { data: newNotificationData, error: insertError } = await supabaseAdmin
+
+    const { data, error } = await supabaseAdmin
       .from('notifications')
       .insert([newNotification])
       .select()
       .single();
 
-    if (insertError) {
-      console.error('Supabase insert error:', insertError);
-      throw insertError;
+    if (error) {
+      console.error('Database insert error:', error);
+      throw error;
     }
 
-    console.log('Successfully inserted notification:', newNotificationData);
-    
-    // Send Push Notifications
-    if (topic_id && vapidPublicKey && vapidPrivateKey) {
+    console.log('Notification inserted successfully:', data.id);
+
+    // Send OneSignal Push Notifications
+    if (topic_id && oneSignalAppId && oneSignalApiKey) {
+      console.log(`Processing OneSignal push notifications for topic: ${topic_id}`);
+      
+      try {
+        // Get users subscribed to this topic
         const { data: subscriptions, error: subError } = await supabaseAdmin
-            .from('topic_subscriptions')
-            .select('user_id')
-            .eq('topic_id', topic_id);
+          .from('topic_subscriptions')
+          .select('user_id')
+          .eq('topic_id', topic_id);
 
         if (subError) {
-            console.error('Error fetching topic subscriptions:', subError);
+          console.error('Error fetching subscriptions:', subError);
         } else if (subscriptions && subscriptions.length > 0) {
-            const userIds = subscriptions.map(s => s.user_id);
+          const userIds = subscriptions.map(s => s.user_id);
+          console.log(`Found ${userIds.length} subscribed users`);
 
-            const { data: pushSubscriptions, error: pushSubError } = await supabaseAdmin
-                .from('push_subscriptions')
-                .select('endpoint, keys')
-                .in('user_id', userIds);
+          // Get OneSignal player IDs for these users
+          const { data: oneSignalPlayers, error: playersError } = await supabaseAdmin
+            .from('onesignal_players')
+            .select('player_id, user_id')
+            .in('user_id', userIds);
 
-            if (pushSubError) {
-                console.error('Error fetching push subscriptions:', pushSubError);
-            } else if (pushSubscriptions && pushSubscriptions.length > 0) {
-                const pushPayload = JSON.stringify({
-                    title: newNotificationData.title,
-                    message: newNotificationData.message,
-                    severity: newNotificationData.severity,
-                    id: newNotificationData.id,
-                    timestamp: newNotificationData.timestamp,
-                    url: `/`
-                });
+          if (playersError) {
+            console.error('Error fetching OneSignal players:', playersError);
+          } else if (oneSignalPlayers && oneSignalPlayers.length > 0) {
+            console.log(`Found ${oneSignalPlayers.length} OneSignal player IDs`);
 
-                const sendPromises = pushSubscriptions.map(sub => {
-                    const pushSubscription = {
-                        endpoint: sub.endpoint,
-                        keys: {
-                            p256dh: sub.keys.p256dh,
-                            auth: sub.keys.auth
-                        }
-                    };
-                    return webpush.sendNotification(pushSubscription, pushPayload)
-                        .catch((err: any) => {
-                            console.error(`Error sending push notification:`, err.statusCode);
-                            if (err.statusCode === 410 || err.statusCode === 404) {
-                                console.log('Deleting stale push subscription.');
-                                return supabaseAdmin.from('push_subscriptions').delete().eq('endpoint', sub.endpoint);
-                            }
-                        });
-                });
+            const playerIds = oneSignalPlayers.map(p => p.player_id);
 
-                await Promise.all(sendPromises);
-                console.log(`Sent ${pushSubscriptions.length} push notifications.`);
+            // Prepare OneSignal notification payload
+            const oneSignalPayload = {
+              app_id: oneSignalAppId,
+              include_player_ids: playerIds,
+              headings: { en: data.title },
+              contents: { en: data.message },
+              data: {
+                notification_id: data.id,
+                severity: data.severity,
+                topic_id: data.topic_id,
+                timestamp: data.timestamp
+              },
+              // Set priority based on severity
+              priority: data.severity === 'high' ? 10 : 5,
+              // Add custom sound and icon
+              android_sound: 'alert',
+              ios_sound: 'alert.wav',
+              small_icon: 'ic_notification',
+              large_icon: '/icons/icon-192x192.png',
+              // Add action buttons
+              buttons: [
+                {
+                  id: 'view',
+                  text: 'View Alert'
+                },
+                {
+                  id: 'dismiss',
+                  text: 'Dismiss'
+                }
+              ],
+              // Set badge and other options
+              ios_badgeType: 'Increase',
+              ios_badgeCount: 1,
+              // Filter by tags to ensure only subscribed users get notifications
+              filters: [
+                {
+                  field: 'tag',
+                  key: `topic_${topic_id}`,
+                  relation: '=',
+                  value: 'true'
+                }
+              ]
+            };
+
+            console.log('OneSignal payload:', JSON.stringify(oneSignalPayload, null, 2));
+
+            // Send notification via OneSignal REST API
+            const oneSignalResponse = await fetch('https://onesignal.com/api/v1/notifications', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Basic ${oneSignalApiKey}`
+              },
+              body: JSON.stringify(oneSignalPayload)
+            });
+
+            const oneSignalResult = await oneSignalResponse.json();
+            
+            if (oneSignalResponse.ok) {
+              console.log('OneSignal notification sent successfully:', oneSignalResult);
+              console.log(`Recipients: ${oneSignalResult.recipients || 0}`);
+            } else {
+              console.error('OneSignal API error:', oneSignalResult);
             }
+          } else {
+            console.log('No OneSignal player IDs found for subscribed users');
+          }
+        } else {
+          console.log('No users subscribed to topic');
         }
+      } catch (oneSignalError) {
+        console.error('OneSignal notification process error:', oneSignalError);
+        // Don't fail the whole request if push notifications fail
+      }
+    } else {
+      console.log('Skipping OneSignal notifications - missing topic_id or OneSignal keys');
     }
 
-    return new Response(JSON.stringify({ 
-      success: true, 
-      data: newNotificationData 
+    return new Response(JSON.stringify({
+      success: true,
+      data,
+      message: 'Notification created successfully'
     }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      status: 200,
+      headers: {
+        ...corsHeaders,
+        'Content-Type': 'application/json'
+      },
+      status: 200
     });
+
   } catch (error) {
-    console.error('Function error:', error.message);
-    return new Response(JSON.stringify({ error: error.message }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      status: 500,
+    console.error('Function error:', error);
+    return new Response(JSON.stringify({
+      error: error.message,
+      details: error.toString()
+    }), {
+      headers: {
+        ...corsHeaders,
+        'Content-Type': 'application/json'
+      },
+      status: 500
     });
   }
 });
