@@ -12,9 +12,19 @@ interface HeaderProps {
     openSettings: () => void;
     systemStatus: SystemStatusData;
     session: Session;
+    onNotificationIconClick?: () => void; // Add this line
 }
 
-export const Header: React.FC<HeaderProps> = ({ onNavigate, onLogout, notifications, setIsSidebarOpen, openSettings, systemStatus, session }) => {
+export const Header: React.FC<HeaderProps> = ({ 
+    onNavigate, 
+    onLogout, 
+    notifications, 
+    setIsSidebarOpen, 
+    openSettings, 
+    systemStatus, 
+    session,
+    onNotificationIconClick // Add this parameter
+}) => {
     const themeContext = React.useContext(ThemeContext);
     const [isProfileOpen, setProfileOpen] = React.useState(false);
     const [isStatusOpen, setStatusOpen] = React.useState(false);
@@ -74,7 +84,10 @@ export const Header: React.FC<HeaderProps> = ({ onNavigate, onLogout, notificati
                 <button onClick={openSettings} className="p-2.5 rounded-full text-muted-foreground hover:bg-accent">
                     <Icon name="settings" className="w-5 h-5"/>
                 </button>
-                <button className="relative p-2.5 rounded-full text-muted-foreground hover:bg-accent">
+                <button 
+                    onClick={onNotificationIconClick} // Add the click handler here
+                    className="relative p-2.5 rounded-full text-muted-foreground hover:bg-accent"
+                >
                     <Icon name="bell" className="w-5 h-5"/>
                     {unacknowledgedCount > 0 && (
                         <span className="absolute top-1.5 right-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-white text-[10px] font-bold ring-2 ring-card">{unacknowledgedCount}</span>
