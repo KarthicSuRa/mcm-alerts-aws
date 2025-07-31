@@ -259,7 +259,7 @@ export interface AuditLog {
 export interface SystemStatusData {
   service: 'Ready' | 'Error';
   database: 'Connected' | 'Disconnected';
-  push: 'Supported' | 'Unsupported';
+  push: 'Supported' | 'Unsupported' | 'OneSignal';
   subscription: 'Active' | 'Inactive';
 }
 
