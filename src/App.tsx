@@ -76,7 +76,7 @@ function App() {
     return () => subscription.unsubscribe();
   }, []);
 
-  // --- OneSignal Initialization ---
+  // --- OneSignal Initialization with Enhanced Mobile Support ---
   useEffect(() => {
     const initOneSignal = async () => {
       try {
@@ -94,14 +94,29 @@ function App() {
         // Set up notification click listener
         oneSignalService.onNotificationClick((event: any) => {
           console.log('OneSignal notification clicked:', event);
-          // Handle notification click - navigate to most recent notification
           handleNotificationIconClick();
         });
+
+        // Set up custom event listener for mobile foreground notifications
+        const handleMobileForegroundNotification = (event: CustomEvent) => {
+          const notificationData = event.detail;
+          console.log('Mobile foreground notification received:', notificationData);
+          
+          // Handle the notification like any other new notification
+          handleNewNotification(notificationData);
+        };
+
+        window.addEventListener('oneSignalForegroundNotification', handleMobileForegroundNotification);
 
         // If user is logged in and subscribed, save player ID to database
         if (session && isSubscribed) {
           await oneSignalService.savePlayerIdToDatabase(session.user.id);
         }
+
+        // Cleanup function
+        return () => {
+          window.removeEventListener('oneSignalForegroundNotification', handleMobileForegroundNotification);
+        };
       } catch (error) {
         console.error('Failed to initialize OneSignal:', error);
       } finally {
@@ -126,17 +141,63 @@ function App() {
       return;
     }
 
-    // Show toast notification for both mobile and web browsers
+    // Always show toast notification for both mobile and web browsers
     addToast(notification);
 
     // Play sound if enabled
     if (soundEnabled) {
       try {
         const audio = new Audio('/alert.wav');
-        audio.volume = 0.5; // Set reasonable volume
-        await audio.play();
+        audio.volume = 0.5;
+        
+        // For mobile browsers, we need to handle audio play differently
+        const playAudio = async () => {
+          try {
+            await audio.play();
+          } catch (playError) {
+            // If auto-play fails, try again with user interaction
+            console.warn('Audio autoplay failed, will play on next user interaction:', playError);
+            
+            // Store audio for later play on user interaction
+            const playOnInteraction = () => {
+              audio.play().catch(e => console.error('Audio play failed:', e));
+              document.removeEventListener('touchstart', playOnInteraction);
+              document.removeEventListener('click', playOnInteraction);
+            };
+            
+            document.addEventListener('touchstart', playOnInteraction, { once: true });
+            document.addEventListener('click', playOnInteraction, { once: true });
+          }
+        };
+
+        await playAudio();
       } catch (e) {
         console.error("Error playing sound:", e);
+      }
+    }
+
+    // For mobile devices, also try to show a native notification if possible
+    if ('Notification' in window && Notification.permission === 'granted') {
+      try {
+        const nativeNotification = new Notification(notification.title, {
+          body: notification.message,
+          icon: '/icons/icon-192x192.png',
+          tag: notification.id,
+          requireInteraction: notification.severity === 'high',
+          silent: !soundEnabled,
+        });
+
+        nativeNotification.onclick = () => {
+          handleNotificationIconClick();
+          nativeNotification.close();
+        };
+
+        // Auto-close after 10 seconds for non-critical notifications
+        if (notification.severity !== 'high') {
+          setTimeout(() => nativeNotification.close(), 10000);
+        }
+      } catch (error) {
+        console.warn('Failed to show native notification:', error);
       }
     }
   }, [soundEnabled, snoozedUntil, topics, addToast]);
@@ -315,7 +376,7 @@ function App() {
       }
     } catch (error) {
       console.error('Failed to subscribe to push notifications:', error);
-      alert('Failed to enable push notifications. Please try again.');
+      alert('Failed to enable push notifications. Please check your browser settings and try again.');
     } finally {
       setIsPushLoading(false);
     }
@@ -527,7 +588,7 @@ function App() {
       openSettings: () => setIsSettingsOpen(true),
       systemStatus,
       session,
-      onNotificationIconClick: handleNotificationIconClick, // Pass the click handler
+      onNotificationIconClick: handleNotificationIconClick,
   };
 
   switch (currentPage) {
@@ -594,10 +655,16 @@ function App() {
         </ErrorBoundary>
       </div>
       
-      {/* Enhanced Toast notifications container - Works on both mobile and web browsers */}
+      {/* Enhanced Toast notifications container - Enhanced for mobile */}
       <div 
         aria-live="assertive" 
         className="fixed inset-0 flex items-end px-4 py-6 pointer-events-none sm:p-6 sm:items-start z-[100]"
+        style={{ 
+          /* Ensure toasts appear above everything on mobile */ 
+          zIndex: 9999,
+          /* Prevent interference with mobile scrolling */
+          touchAction: 'none'
+        }}
       >
         <div className="w-full flex flex-col items-center space-y-4 sm:items-end">
             {toasts.map(toast => (
