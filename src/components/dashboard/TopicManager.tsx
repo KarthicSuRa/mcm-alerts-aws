@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Topic, Session } from '../../types';
 import { Icon } from '../ui/Icon';
 
@@ -20,6 +20,22 @@ export const TopicManager: React.FC<TopicManagerProps> = ({
     const [newTopicDesc, setNewTopicDesc] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    
+    // Refs to prevent auto-close issues
+    const containerRef = useRef<HTMLDivElement>(null);
+    const nameInputRef = useRef<HTMLInputElement>(null);
+    const descInputRef = useRef<HTMLTextAreaElement>(null);
+
+    // Focus management to prevent auto-close
+    useEffect(() => {
+        if (isAdding && nameInputRef.current) {
+            // Small delay to ensure proper focus
+            const timer = setTimeout(() => {
+                nameInputRef.current?.focus();
+            }, 100);
+            return () => clearTimeout(timer);
+        }
+    }, [isAdding]);
 
     const handleAddTopic = async () => {
         if (!newTopicName.trim() || isLoading) return;
@@ -53,10 +69,14 @@ export const TopicManager: React.FC<TopicManagerProps> = ({
     };
 
     const handleKeyPress = (e: React.KeyboardEvent) => {
+        // Prevent event bubbling to parent components
+        e.stopPropagation();
+        
         if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault();
             handleAddTopic();
         } else if (e.key === 'Escape') {
+            e.preventDefault();
             handleCancel();
         }
     };
@@ -72,13 +92,39 @@ export const TopicManager: React.FC<TopicManagerProps> = ({
         }
     };
 
+    // Prevent clicks from bubbling up and causing auto-close
+    const handleContainerClick = (e: React.MouseEvent) => {
+        e.stopPropagation();
+    };
+
+    const handleInputFocus = (e: React.FocusEvent) => {
+        e.stopPropagation();
+    };
+
+    const handleInputBlur = (e: React.FocusEvent) => {
+        e.stopPropagation();
+        // Don't close the form on blur - only close via Cancel button or successful submission
+    };
+
+    const handleAddTopicClick = (e: React.MouseEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsAdding(true);
+    };
+
+    const handleButtonClick = (e: React.MouseEvent, action: () => void) => {
+        e.preventDefault();
+        e.stopPropagation();
+        action();
+    };
+
     return (
-        <div className="bg-card h-full">
+        <div className="bg-card h-full" ref={containerRef} onClick={handleContainerClick}>
             <div className="flex justify-between items-center mb-6">
                 <h3 className="text-xl font-semibold">Subscriptions</h3>
                 {!isAdding && (
                     <button 
-                        onClick={() => setIsAdding(true)}
+                        onClick={handleAddTopicClick}
                         className="flex items-center gap-1.5 text-sm font-medium text-primary hover:opacity-80 transition-opacity disabled:opacity-50"
                         disabled={isLoading}
                         type="button"
@@ -90,7 +136,10 @@ export const TopicManager: React.FC<TopicManagerProps> = ({
             </div>
 
             {isAdding && (
-                <div className="space-y-4 p-4 bg-secondary rounded-lg border border-border mb-6">
+                <div 
+                    className="space-y-4 p-4 bg-secondary rounded-lg border border-border mb-6"
+                    onClick={handleContainerClick}
+                >
                     <h4 className="font-semibold text-foreground">Create New Topic</h4>
                     
                     {error && (
@@ -101,32 +150,41 @@ export const TopicManager: React.FC<TopicManagerProps> = ({
                     
                     <div className="space-y-3">
                         <input
+                            ref={nameInputRef}
                             type="text"
                             value={newTopicName}
                             onChange={e => setNewTopicName(e.target.value)}
                             onKeyDown={handleKeyPress}
+                            onFocus={handleInputFocus}
+                            onBlur={handleInputBlur}
+                            onClick={handleContainerClick}
                             placeholder="New topic name*"
                             className="w-full px-3 py-2 text-sm bg-background border border-border rounded-md focus:ring-ring focus:border-ring focus:outline-none transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                            autoFocus
                             disabled={isLoading}
                             maxLength={100}
                             required
+                            autoComplete="off"
                         />
                         
                         <textarea
+                            ref={descInputRef}
                             value={newTopicDesc}
                             onChange={e => setNewTopicDesc(e.target.value)}
                             onKeyDown={handleKeyPress}
+                            onFocus={handleInputFocus}
+                            onBlur={handleInputBlur}
+                            onClick={handleContainerClick}
                             placeholder="Optional description..."
                             rows={2}
                             className="w-full px-3 py-2 text-sm bg-background border border-border rounded-md focus:ring-ring focus:border-ring focus:outline-none resize-none transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                             disabled={isLoading}
                             maxLength={500}
+                            autoComplete="off"
                         />
                         
                         <div className="flex gap-2 justify-end pt-2">
                             <button 
-                                onClick={handleCancel} 
+                                onClick={(e) => handleButtonClick(e, handleCancel)}
                                 className="px-4 py-2 rounded-md bg-muted text-muted-foreground text-sm font-semibold hover:bg-accent transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                                 disabled={isLoading}
                                 type="button"
@@ -134,7 +192,7 @@ export const TopicManager: React.FC<TopicManagerProps> = ({
                                 Cancel
                             </button>
                             <button 
-                                onClick={handleAddTopic} 
+                                onClick={(e) => handleButtonClick(e, handleAddTopic)}
                                 className="px-4 py-2 rounded-md bg-foreground text-background text-sm font-semibold hover:opacity-80 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2" 
                                 disabled={!newTopicName.trim() || isLoading}
                                 type="button"
@@ -163,6 +221,7 @@ export const TopicManager: React.FC<TopicManagerProps> = ({
                         <div 
                             key={topic.id} 
                             className="p-4 rounded-lg border border-border bg-secondary/50 hover:bg-secondary/70 transition-colors"
+                            onClick={handleContainerClick}
                         >
                             <div className="flex items-center justify-between">
                                 <div className="pr-4 flex-1 min-w-0">
@@ -187,7 +246,11 @@ export const TopicManager: React.FC<TopicManagerProps> = ({
                                 
                                 <div className="flex-shrink-0">
                                     <button 
-                                        onClick={() => handleToggleSubscription(topic)} 
+                                        onClick={(e) => {
+                                            e.preventDefault();
+                                            e.stopPropagation();
+                                            handleToggleSubscription(topic);
+                                        }}
                                         className={`
                                             relative inline-flex h-7 w-12 flex-shrink-0 items-center rounded-full 
                                             transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2
