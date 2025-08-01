@@ -130,130 +130,181 @@ function App() {
   }, [soundEnabled, snoozedUntil, topics]);
 
   // --- Data Fetching and Realtime Subscriptions ---
-  useEffect(() => {
+  // Replace your data fetching useEffect (around lines 118-178) with this:
+
+useEffect(() => {
     if (session) {
-      // Initial data fetch
+      let isMounted = true; // Prevent state updates if component unmounts
+      
+      // Initial data fetch with proper error handling
       const fetchInitialData = async () => {
-        // Fetch notifications
-        const { data: notificationsData, error: notificationsError } = await supabase
-            .from('notifications')
-            .select('*')
-            .order('created_at', { ascending: false });
+        try {
+          console.log('Fetching initial data...');
+          
+          // Fetch notifications with timeout and error handling
+          const { data: notificationsData, error: notificationsError } = await supabase
+              .from('notifications')
+              .select('*')
+              .order('created_at', { ascending: false })
+              .limit(100); // Add limit to prevent massive queries
 
-        if (notificationsError) {
-            console.error('Error fetching notifications:', notificationsError);
-        } else if (notificationsData) {
-            const notificationIds = notificationsData.map(n => n.id);
-            const commentsByNotificationId = new Map<string, CommentFromDB[]>();
+          if (notificationsError) {
+              console.error('Error fetching notifications:', notificationsError);
+              // Set empty array instead of breaking
+              if (isMounted) setNotifications([]);
+          } else if (notificationsData && isMounted) {
+              const notificationIds = notificationsData.map(n => n.id);
+              const commentsByNotificationId = new Map<string, CommentFromDB[]>();
 
-            if (notificationIds.length > 0) {
-              const { data: commentsData, error: commentsError } = await supabase
-                  .from('comments')
-                  .select('*')
-                  .in('notification_id', notificationIds);
+              // Only fetch comments if we have notifications
+              if (notificationIds.length > 0) {
+                const { data: commentsData, error: commentsError } = await supabase
+                    .from('comments')
+                    .select('*')
+                    .in('notification_id', notificationIds);
 
-              if (commentsData && !commentsError) {
-                  commentsData.forEach(c => {
-                      if (!commentsByNotificationId.has(c.notification_id)) {
-                          commentsByNotificationId.set(c.notification_id, []);
-                      }
-                      commentsByNotificationId.get(c.notification_id)!.push(c);
-                  });
-              } else if (commentsError) {
-                  console.error('Error fetching comments:', commentsError);
+                if (commentsData && !commentsError) {
+                    commentsData.forEach(c => {
+                        if (!commentsByNotificationId.has(c.notification_id)) {
+                            commentsByNotificationId.set(c.notification_id, []);
+                        }
+                        commentsByNotificationId.get(c.notification_id)!.push(c);
+                    });
+                } else if (commentsError) {
+                    console.error('Error fetching comments:', commentsError);
+                }
               }
+
+              const transformedData = notificationsData.map(n => {
+                  const comments = commentsByNotificationId.get(n.id) || [];
+                  return {
+                      ...n,
+                      comments: comments.map((c: CommentFromDB) => ({
+                          ...c,
+                          user_email: c.user_id === session.user.id ? (session.user.email ?? 'Current User') : 'Another User'
+                      }))
+                  };
+              });
+              
+              if (isMounted) {
+                setNotifications(transformedData as Notification[]);
+              }
+          } else {
+              // No data found, set empty array
+              if (isMounted) setNotifications([]);
+          }
+
+          // Fetch topics and user subscriptions with error handling
+          const [topicsResult, subscriptionsResult] = await Promise.allSettled([
+            supabase.from('topics').select('*'),
+            supabase.from('topic_subscriptions').select('*').eq('user_id', session.user.id)
+          ]);
+
+          if (topicsResult.status === 'fulfilled' && subscriptionsResult.status === 'fulfilled') {
+            const topicsData = topicsResult.value.data;
+            const subscriptionsData = subscriptionsResult.value.data;
+            
+            if (topicsData && subscriptionsData && isMounted) {
+                const subscribedTopicIds = new Set(subscriptionsData.map(sub => sub.topic_id));
+                const mergedTopics = topicsData.map(topic => ({
+                    ...topic,
+                    subscribed: subscribedTopicIds.has(topic.id),
+                    subscription_id: subscriptionsData.find(s => s.topic_id === topic.id)?.id,
+                }));
+                setTopics(mergedTopics);
+            } else if (isMounted) {
+                setTopics([]);
             }
+          } else {
+            console.error('Error fetching topics/subscriptions:', 
+              topicsResult.status === 'rejected' ? topicsResult.reason : subscriptionsResult.reason);
+            if (isMounted) setTopics([]);
+          }
 
-            const transformedData = notificationsData.map(n => {
-                const comments = commentsByNotificationId.get(n.id) || [];
-                return {
-                    ...n,
-                    comments: comments.map((c: CommentFromDB) => ({
-                        ...c,
-                        user_email: c.user_id === session.user.id ? (session.user.email ?? 'Current User') : 'Another User'
-                    }))
-                };
-            });
-            setNotifications(transformedData as Notification[]);
-        }
-
-        // Fetch topics and user subscriptions
-        const { data: topicsData, error: topicsError } = await supabase.from('topics').select('*');
-        const { data: subscriptionsData, error: subscriptionsError } = await supabase.from('topic_subscriptions').select('*').eq('user_id', session.user.id);
-
-        if (topicsError || subscriptionsError) {
-            console.error('Error fetching topics/subscriptions:', topicsError || subscriptionsError);
-        } else if (topicsData && subscriptionsData) {
-            const subscribedTopicIds = new Set(subscriptionsData.map(sub => sub.topic_id));
-            const mergedTopics = topicsData.map(topic => ({
-                ...topic,
-                subscribed: subscribedTopicIds.has(topic.id),
-                subscription_id: subscriptionsData.find(s => s.topic_id === topic.id)?.id,
-            }));
-            setTopics(mergedTopics);
+          console.log('Initial data fetch completed');
+          
+        } catch (error) {
+          console.error('Fatal error in fetchInitialData:', error);
+          // Set default empty states
+          if (isMounted) {
+            setNotifications([]);
+            setTopics([]);
+          }
         }
       };
 
       fetchInitialData();
       
-      // Set up realtime subscriptions
-      const notificationChannel = supabase
-        .channel('public:notifications')
-        .on<NotificationFromDB>('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications' }, payload => {
-            const newNotification = {...payload.new, comments: [] } as Notification;
-            setNotifications(prev => [newNotification, ...prev]);
-            
-            // Handle sound and toast for new notifications
-            handleNewNotification(newNotification);
-        })
-        .on<NotificationFromDB>('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'notifications' }, payload => {
-            setNotifications(prev => prev.map(n => n.id === payload.new.id ? {...n, ...payload.new} as Notification : n));
-        })
-        .on<CommentFromDB>('postgres_changes', { event: 'INSERT', schema: 'public', table: 'comments' }, async (payload) => {
-             const newCommentPayload = payload.new;
-             const newComment = {
-                ...newCommentPayload,
-                user_email: newCommentPayload.user_id === session.user.id ? (session.user.email ?? 'Current User') : 'Another User'
-             } as Comment;
-             setNotifications(prev => prev.map(n => 
-                n.id === newComment.notification_id 
-                ? { ...n, comments: [...(n.comments || []), newComment].sort((a,b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()) } 
-                : n
-            ));
-        })
-        .subscribe();
-        
-      const topicChannel = supabase
-        .channel('public:topics')
-        .on<TopicFromDB>('postgres_changes', { event: 'INSERT', schema: 'public', table: 'topics' }, payload => {
-            setTopics(prev => [...prev, {...payload.new, subscribed: false} as Topic]);
-        })
-        .subscribe();
-        
-      const subscriptionChannel = supabase
-        .channel('public:topic_subscriptions')
-        .on<SubscriptionFromDB>('postgres_changes', { event: '*', schema: 'public', table: 'topic_subscriptions', filter: `user_id=eq.${session.user.id}` }, (payload) => {
-             if (payload.eventType === 'INSERT') {
-                const newSub = payload.new as SubscriptionFromDB;
-                setTopics(prev => prev.map(t => t.id === newSub.topic_id ? {...t, subscribed: true, subscription_id: newSub.id} : t));
-             }
-             if (payload.eventType === 'DELETE') {
-                 const oldSub = payload.old as Partial<SubscriptionFromDB>;
-                 if (oldSub?.topic_id) {
-                    setTopics(prev => prev.map(t => t.id === oldSub.topic_id ? {...t, subscribed: false, subscription_id: undefined} : t));
-                 }
-             }
-        })
-        .subscribe();
+      // Set up realtime subscriptions with error handling
+      try {
+        const notificationChannel = supabase
+          .channel('public:notifications')
+          .on<NotificationFromDB>('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications' }, payload => {
+              if (isMounted && payload.new) {
+                const newNotification = {...payload.new, comments: [] } as Notification;
+                setNotifications(prev => [newNotification, ...prev]);
+                handleNewNotification(newNotification);
+              }
+          })
+          .on<NotificationFromDB>('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'notifications' }, payload => {
+              if (isMounted && payload.new) {
+                setNotifications(prev => prev.map(n => n.id === payload.new.id ? {...n, ...payload.new} as Notification : n));
+              }
+          })
+          .on<CommentFromDB>('postgres_changes', { event: 'INSERT', schema: 'public', table: 'comments' }, async (payload) => {
+               if (isMounted && payload.new) {
+                 const newCommentPayload = payload.new;
+                 const newComment = {
+                    ...newCommentPayload,
+                    user_email: newCommentPayload.user_id === session.user.id ? (session.user.email ?? 'Current User') : 'Another User'
+                 } as Comment;
+                 setNotifications(prev => prev.map(n => 
+                    n.id === newComment.notification_id 
+                    ? { ...n, comments: [...(n.comments || []), newComment].sort((a,b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()) } 
+                    : n
+                ));
+               }
+          })
+          .subscribe();
+          
+        const topicChannel = supabase
+          .channel('public:topics')
+          .on<TopicFromDB>('postgres_changes', { event: 'INSERT', schema: 'public', table: 'topics' }, payload => {
+              if (isMounted && payload.new) {
+                setTopics(prev => [...prev, {...payload.new, subscribed: false} as Topic]);
+              }
+          })
+          .subscribe();
+          
+        const subscriptionChannel = supabase
+          .channel('public:topic_subscriptions')
+          .on<SubscriptionFromDB>('postgres_changes', { event: '*', schema: 'public', table: 'topic_subscriptions', filter: `user_id=eq.${session.user.id}` }, (payload) => {
+               if (!isMounted) return;
+               
+               if (payload.eventType === 'INSERT' && payload.new) {
+                  const newSub = payload.new as SubscriptionFromDB;
+                  setTopics(prev => prev.map(t => t.id === newSub.topic_id ? {...t, subscribed: true, subscription_id: newSub.id} : t));
+               }
+               if (payload.eventType === 'DELETE' && payload.old) {
+                   const oldSub = payload.old as Partial<SubscriptionFromDB>;
+                   if (oldSub?.topic_id) {
+                      setTopics(prev => prev.map(t => t.id === oldSub.topic_id ? {...t, subscribed: false, subscription_id: undefined} : t));
+                   }
+               }
+          })
+          .subscribe();
 
-      return () => {
-        supabase.removeChannel(notificationChannel);
-        supabase.removeChannel(topicChannel);
-        supabase.removeChannel(subscriptionChannel);
-      };
+        return () => {
+          isMounted = false;
+          supabase.removeChannel(notificationChannel);
+          supabase.removeChannel(topicChannel);
+          supabase.removeChannel(subscriptionChannel);
+        };
+      } catch (error) {
+        console.error('Error setting up realtime subscriptions:', error);
+      }
     }
-  }, [session, handleNewNotification]);
-
+}, [session, handleNewNotification]);
   // --- OneSignal Push Subscription Management ---
   const subscribeToPush = async () => {
     if (!session) return;
