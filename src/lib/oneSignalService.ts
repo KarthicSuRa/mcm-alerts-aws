@@ -551,8 +551,6 @@ export class OneSignalService {
   }
 
   // Method to get current OneSignal state for debugging
-  // Replace the getDebugInfo method (around line 570) with this fixed version:
-
   async getDebugInfo(): Promise<any> {
     if (!this.initialized) {
       return { error: 'OneSignal not initialized' };
@@ -586,3 +584,4 @@ export class OneSignalService {
       return { error: error instanceof Error ? error.message : String(error) };
     }
   }
+}
