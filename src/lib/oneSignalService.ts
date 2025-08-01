@@ -551,11 +551,13 @@ export class OneSignalService {
   }
 
   // Method to get current OneSignal state for debugging
+  // Replace the getDebugInfo method (around line 570) with this fixed version:
+
   async getDebugInfo(): Promise<any> {
     if (!this.initialized) {
       return { error: 'OneSignal not initialized' };
     }
-
+  
     try {
       const info: any = {
         initialized: this.initialized,
@@ -564,7 +566,7 @@ export class OneSignalService {
         playerId: await this.getPlayerId(),
         pushSupported: this.isPushSupported(),
       };
-
+  
       // Try to get additional info if available
       try {
         if ('Notification' in window) {
@@ -574,12 +576,13 @@ export class OneSignalService {
           info.optedIn = await window.OneSignal.User.PushSubscription.optedIn;
         }
       } catch (error) {
-        info.additionalInfoError = error.message;
+        // Fix: Properly type the error
+        info.additionalInfoError = error instanceof Error ? error.message : String(error);
       }
-
+  
       return info;
     } catch (error) {
-      return { error: error.message };
+      // Fix: Properly type the error
+      return { error: error instanceof Error ? error.message : String(error) };
     }
   }
-}
