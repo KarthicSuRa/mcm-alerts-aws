@@ -18,7 +18,6 @@ interface DashboardPageProps {
   openSettings: () => void;
   systemStatus: SystemStatusData;
   session: Session;
-  onNotificationIconClick?: () => void; // New prop for handling notification icon clicks
 }
 
 export const DashboardPage: React.FC<DashboardPageProps> = ({
@@ -32,7 +31,6 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
     openSettings,
     systemStatus,
     session,
-    onNotificationIconClick,
 }) => {
     return (
         <>
@@ -44,7 +42,6 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                 openSettings={openSettings}
                 systemStatus={systemStatus}
                 session={session}
-                onNotificationIconClick={onNotificationIconClick} // Pass through the click handler
             />
             <main className="flex-1 overflow-y-auto lg:ml-72">
                 <div className="max-w-screen-2xl mx-auto p-4 sm:p-6 lg:p-8">
