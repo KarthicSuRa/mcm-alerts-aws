@@ -130,9 +130,7 @@ function App() {
   }, [soundEnabled, snoozedUntil, topics]);
 
   // --- Data Fetching and Realtime Subscriptions ---
-  // Replace your data fetching useEffect (around lines 118-178) with this:
-
-useEffect(() => {
+  useEffect(() => {
     if (session) {
       let isMounted = true; // Prevent state updates if component unmounts
       
@@ -217,7 +215,8 @@ useEffect(() => {
             }
           } else {
             console.error('Error fetching topics/subscriptions:', 
-              topicsResult.status === 'rejected' ? topicsResult.reason : subscriptionsResult.reason);
+              topicsResult.status === 'rejected' ? (topicsResult as PromiseRejectedResult).reason : 
+              (subscriptionsResult as PromiseRejectedResult).reason);
             if (isMounted) setTopics([]);
           }
 
@@ -304,7 +303,8 @@ useEffect(() => {
         console.error('Error setting up realtime subscriptions:', error);
       }
     }
-}, [session, handleNewNotification]);
+  }, [session, handleNewNotification]);
+
   // --- OneSignal Push Subscription Management ---
   const subscribeToPush = async () => {
     if (!session) return;
