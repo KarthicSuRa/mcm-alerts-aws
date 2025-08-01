@@ -9,6 +9,7 @@ declare global {
 export class OneSignalService {
   private static instance: OneSignalService;
   private initialized = false;
+  private initializing = false;
   private appId: string;
 
   private constructor() {
@@ -23,15 +24,43 @@ export class OneSignalService {
   }
 
   async initialize(): Promise<void> {
-    if (this.initialized || !this.appId) {
+    // Prevent multiple initializations
+    if (this.initialized) {
+      console.log('OneSignal already initialized, skipping...');
       return;
     }
+
+    if (this.initializing) {
+      console.log('OneSignal initialization in progress, waiting...');
+      // Wait for the current initialization to complete
+      while (this.initializing) {
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+      return;
+    }
+
+    if (!this.appId) {
+      throw new Error('OneSignal App ID is not configured. Please set VITE_ONESIGNAL_APP_ID environment variable.');
+    }
+
+    this.initializing = true;
 
     try {
       // Wait for OneSignal SDK to load
       await this.waitForOneSignal();
 
-      // Initialize OneSignal
+      // Check if OneSignal is already initialized
+      try {
+        const existingState = await window.OneSignal.User.PushSubscription.optedIn;
+        console.log('OneSignal appears to be already initialized, current state:', existingState);
+        this.initialized = true;
+        return;
+      } catch (error) {
+        // OneSignal not initialized yet, proceed with initialization
+        console.log('OneSignal not yet initialized, proceeding...');
+      }
+
+      // Initialize OneSignal only if not already initialized
       await window.OneSignal.init({
         appId: this.appId,
         allowLocalhostAsSecureOrigin: true,
@@ -62,7 +91,17 @@ export class OneSignalService {
       console.log('OneSignal initialized successfully');
     } catch (error) {
       console.error('Failed to initialize OneSignal:', error);
+      
+      // Check if the error is about multiple initializations
+      if (error instanceof Error && error.message.includes('initialized once')) {
+        console.log('OneSignal was already initialized, marking as initialized');
+        this.initialized = true;
+        return;
+      }
+      
       throw error;
+    } finally {
+      this.initializing = false;
     }
   }
 
@@ -143,8 +182,15 @@ export class OneSignalService {
       // Subscribe to push notifications
       await window.OneSignal.User.PushSubscription.optIn();
       
+      // Wait a bit for the subscription to be processed
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
       // Get the player ID
       const playerId = await this.getPlayerId();
+      if (!playerId) {
+        throw new Error('Failed to get player ID after subscription');
+      }
+      
       return playerId;
     } catch (error) {
       console.error('Failed to subscribe to notifications:', error);
@@ -243,21 +289,49 @@ export class OneSignalService {
   // Event listeners
   onSubscriptionChange(callback: (subscribed: boolean) => void): void {
     if (!this.initialized) {
-      console.warn('OneSignal not initialized yet');
+      console.warn('OneSignal not initialized yet, will set up listener after initialization');
+      // Set up the listener after initialization
+      this.initialize().then(() => {
+        this.setupSubscriptionChangeListener(callback);
+      }).catch(error => {
+        console.error('Failed to initialize OneSignal for subscription listener:', error);
+      });
       return;
     }
 
-    window.OneSignal.User.PushSubscription.addEventListener('change', (event: any) => {
-      callback(event.current.optedIn);
-    });
+    this.setupSubscriptionChangeListener(callback);
+  }
+
+  private setupSubscriptionChangeListener(callback: (subscribed: boolean) => void): void {
+    try {
+      window.OneSignal.User.PushSubscription.addEventListener('change', (event: any) => {
+        callback(event.current.optedIn);
+      });
+    } catch (error) {
+      console.error('Failed to set up subscription change listener:', error);
+    }
   }
 
   onNotificationClick(callback: (event: any) => void): void {
     if (!this.initialized) {
-      console.warn('OneSignal not initialized yet');
+      console.warn('OneSignal not initialized yet, will set up listener after initialization');
+      // Set up the listener after initialization
+      this.initialize().then(() => {
+        this.setupNotificationClickListener(callback);
+      }).catch(error => {
+        console.error('Failed to initialize OneSignal for notification click listener:', error);
+      });
       return;
     }
 
-    window.OneSignal.Notifications.addEventListener('click', callback);
+    this.setupNotificationClickListener(callback);
+  }
+
+  private setupNotificationClickListener(callback: (event: any) => void): void {
+    try {
+      window.OneSignal.Notifications.addEventListener('click', callback);
+    } catch (error) {
+      console.error('Failed to set up notification click listener:', error);
+    }
   }
 }
