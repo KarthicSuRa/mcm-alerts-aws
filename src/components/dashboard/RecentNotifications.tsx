@@ -12,14 +12,6 @@ interface RecentNotificationsProps {
     session: Session;
 }
 
-// Default severity info for unknown severities
-const DEFAULT_SEVERITY_INFO = {
-    icon: 'alert-circle' as const,
-    color: 'text-muted-foreground',
-    bg: 'bg-muted/20',
-    text: 'text-muted-foreground'
-};
-
 export const RecentNotifications: React.FC<RecentNotificationsProps> = ({ notifications, onUpdateNotification, onAddComment, topics, session }) => {
     const [severityFilter, setSeverityFilter] = useState<Severity | 'all'>('all');
     const [timeFilter, setTimeFilter] = useState<'all' | '1h' | '6h' | '24h'>('all');
@@ -71,20 +63,6 @@ export const RecentNotifications: React.FC<RecentNotificationsProps> = ({ notifi
         onUpdateNotification(notification.id, { status: 'acknowledged' });
     };
 
-    // Helper function to get severity info with fallback
-    const getSeverityInfo = (severity: string) => {
-        return SEVERITY_INFO[severity as Severity] || DEFAULT_SEVERITY_INFO;
-    };
-
-    // Helper function to get status info with fallback  
-    const getStatusInfo = (status: string) => {
-        return STATUS_INFO[status as NotificationStatus] || {
-            icon: 'help-circle' as const,
-            bg: 'bg-muted/20',
-            text: 'text-muted-foreground'
-        };
-    };
-
     return (
         <div className="bg-gradient-to-br from-card to-secondary/20 rounded-xl border border-border shadow-lg shadow-black/5 h-full max-h-[calc(100vh-8rem)] flex flex-col">
             {/* Fixed Header - doesn't scroll */}
@@ -133,9 +111,6 @@ export const RecentNotifications: React.FC<RecentNotificationsProps> = ({ notifi
                             <p className="text-sm mt-1">Try sending a test alert or adjusting filters!</p>
                         </div>
                     ) : filteredNotifications.map(n => {
-                        const severityInfo = getSeverityInfo(n.severity);
-                        const statusInfo = getStatusInfo(n.status);
-                        
                         return (
                             <div key={n.id} className="bg-card rounded-lg overflow-hidden transition-shadow duration-300 hover:shadow-2xl border border-border">
                                 <div 
@@ -144,15 +119,15 @@ export const RecentNotifications: React.FC<RecentNotificationsProps> = ({ notifi
                                 >
                                     <div className="grid grid-cols-[2rem,1fr,auto] gap-4 items-start">
                                         <div>
-                                            <Icon name={severityInfo.icon} className={`w-8 h-8 ${severityInfo.color}`} />
+                                            <Icon name={SEVERITY_INFO[n.severity].icon} className={`w-8 h-8 ${SEVERITY_INFO[n.severity].color}`} />
                                         </div>
                                         <div className="min-w-0">
                                             <h4 className="font-semibold text-base text-foreground truncate pr-4">{n.title}</h4>
                                             <p className="text-sm text-muted-foreground mt-1 truncate">{n.message}</p>
                                             <div className="flex items-center gap-3 mt-3">
-                                                <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold rounded-full ${statusInfo.bg} ${statusInfo.text} capitalize`}>
+                                                <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold rounded-full ${STATUS_INFO[n.status].bg} ${STATUS_INFO[n.status].text} capitalize`}>
                                                     {n.status === 'new' && <div className="w-2 h-2 rounded-full bg-destructive animate-blink"></div>}
-                                                    <Icon name={statusInfo.icon} className="w-3.5 h-3.5" />
+                                                    <Icon name={STATUS_INFO[n.status].icon} className="w-3.5 h-3.5" />
                                                     {n.status}
                                                 </span>
                                             </div>
