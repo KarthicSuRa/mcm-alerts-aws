@@ -12,6 +12,7 @@ import { SettingsModal } from './components/layout/SettingsModal';
 import { NotificationToast } from './components/ui/NotificationToast';
 import { Theme, type Notification, Severity, NotificationStatus, SystemStatusData, Session, Comment, NotificationUpdatePayload, Topic, Database } from './types';
 import { supabase } from './lib/supabaseClient';
+import { OneSignalService } from './lib/oneSignalService';
 import { ThemeContext } from './contexts/ThemeContext';
 import ErrorBoundary from './components/ui/ErrorBoundary';
 
@@ -19,7 +20,6 @@ type NotificationFromDB = Database['public']['Tables']['notifications']['Row'];
 type CommentFromDB = Database['public']['Tables']['comments']['Row'];
 type TopicFromDB = Database['public']['Tables']['topics']['Row'];
 type SubscriptionFromDB = Database['public']['Tables']['topic_subscriptions']['Row'];
-
 
 function App() {
   const [theme, setTheme] = useState<Theme>('light');
@@ -39,6 +39,9 @@ function App() {
   const [topics, setTopics] = useState<Topic[]>([]);
   const [toasts, setToasts] = useState<Notification[]>([]);
 
+  // OneSignal service instance
+  const oneSignalService = OneSignalService.getInstance();
+
   const addToast = (notification: Notification) => {
     setToasts(prev => [{...notification}, ...prev]);
   };
@@ -50,9 +53,9 @@ function App() {
   const systemStatus: SystemStatusData = useMemo(() => ({
     service: 'Ready',
     database: 'Connected',
-    push: 'Supported',
-    subscription: 'Active',
-  }), []);
+    push: 'OneSignal',
+    subscription: isPushEnabled ? 'Active' : 'Inactive',
+  }), [isPushEnabled]);
 
   // --- Auth Effect ---
   useEffect(() => {
@@ -67,9 +70,42 @@ function App() {
     return () => subscription.unsubscribe();
   }, []);
 
-  // Replace the handleNewNotification function in App.tsx with this fixed version:
+  // --- OneSignal Initialization ---
+  useEffect(() => {
+    const initOneSignal = async () => {
+      try {
+        await oneSignalService.initialize();
+        
+        // Check if user is already subscribed
+        const isSubscribed = await oneSignalService.isSubscribed();
+        setIsPushEnabled(isSubscribed);
+        
+        // Set up subscription change listener
+        oneSignalService.onSubscriptionChange((subscribed: boolean) => {
+          setIsPushEnabled(subscribed);
+        });
 
-const handleNewNotification = useCallback(async (notification: Notification) => {
+        // Set up notification click listener
+        oneSignalService.onNotificationClick((event: any) => {
+          console.log('OneSignal notification clicked:', event);
+          // Handle notification click - could navigate to specific page
+        });
+
+        // If user is logged in and subscribed, save player ID to database
+        if (session && isSubscribed) {
+          await oneSignalService.savePlayerIdToDatabase(session.user.id);
+        }
+      } catch (error) {
+        console.error('Failed to initialize OneSignal:', error);
+      } finally {
+        setIsPushLoading(false);
+      }
+    };
+
+    initOneSignal();
+  }, [session]);
+
+  const handleNewNotification = useCallback(async (notification: Notification) => {
     // Check if notifications are snoozed
     if (snoozedUntil && new Date() < snoozedUntil) {
       console.log("Alerts are snoozed. Notification sound/toast blocked.");
@@ -91,70 +127,7 @@ const handleNewNotification = useCallback(async (notification: Notification) => 
       const audio = new Audio('/alert.wav');
       audio.play().catch(e => console.error("Error playing sound:", e));
     }
-
-    // Show browser push notification if supported and user has granted permission
-    if ('Notification' in window && globalThis.Notification.permission === 'granted') {
-      try {
-        // Check if we have a service worker registration
-        if ('serviceWorker' in navigator) {
-          const registration = await navigator.serviceWorker.ready;
-          
-          // Use service worker for notifications with actions
-          const notificationOptions = {
-            body: notification.message || 'You have a new notification',
-            icon: '/favicon.ico',
-            badge: '/favicon.ico',
-            tag: notification.id,
-            requireInteraction: notification.severity === 'high',
-            silent: !soundEnabled,
-            data: {
-              notificationId: notification.id,
-              severity: notification.severity,
-              timestamp: notification.timestamp
-            },
-            actions: [
-              {
-                action: 'view',
-                title: 'View'
-              },
-              {
-                action: 'dismiss', 
-                title: 'Dismiss'
-              }
-            ]
-          };
-
-          await registration.showNotification(notification.title || 'New Alert', notificationOptions);
-        } else {
-          // Fallback to basic notification without actions
-          const basicOptions = {
-            body: notification.message || 'You have a new notification',
-            icon: '/favicon.ico',
-            tag: notification.id,
-            requireInteraction: notification.severity === 'high',
-            silent: !soundEnabled
-          };
-
-          new globalThis.Notification(notification.title || 'New Alert', basicOptions);
-        }
-      } catch (error) {
-        console.error('Error showing browser notification:', error);
-        
-        // Final fallback to basic notification
-        try {
-          const basicOptions = {
-            body: notification.message || 'You have a new notification',
-            icon: '/favicon.ico',
-            tag: notification.id,
-            silent: !soundEnabled
-          };
-          new globalThis.Notification(notification.title || 'New Alert', basicOptions);
-        } catch (fallbackError) {
-          console.error('Fallback notification also failed:', fallbackError);
-        }
-      }
-    }
-  }, [soundEnabled, snoozedUntil, topics, addToast]);
+  }, [soundEnabled, snoozedUntil, topics]);
 
   // --- Data Fetching and Realtime Subscriptions ---
   useEffect(() => {
@@ -279,135 +252,52 @@ const handleNewNotification = useCallback(async (notification: Notification) => 
         supabase.removeChannel(subscriptionChannel);
       };
     }
-  }, [session]);
-  
-  // --- PWA Notification Setup ---
-  useEffect(() => {
-    // Register service worker for PWA notifications
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/sw.js')
-        .then((registration) => {
-          console.log('Service Worker registered:', registration);
-        })
-        .catch((error) => {
-          console.error('Service Worker registration failed:', error);
-        });
-    }
+  }, [session, handleNewNotification]);
 
-    // Request notification permission on app load
-    if ('Notification' in window && globalThis.Notification.permission === 'default') {
-      globalThis.Notification.requestPermission().then((permission) => {
-        console.log('Notification permission:', permission);
-      });
-    }
-  }, []);
-
-  // --- Push Notification Subscription Effect ---
-  const saveSubscription = useCallback(async (subscription: PushSubscription) => {
-    if (!session) return;
-    const { endpoint, keys } = subscription.toJSON();
-    
-    const subData: Database['public']['Tables']['push_subscriptions']['Insert'] = {
-        user_id: session.user.id,
-        endpoint: endpoint || '',
-        keys: {
-            p256dh: keys!.p256dh!,
-            auth: keys!.auth!,
-        },
-    };
-
-    const { error } = await supabase.from('push_subscriptions').upsert(subData, { onConflict: 'endpoint' });
-
-    if (error) {
-        console.error('Error saving push subscription:', error);
-        throw error;
-    }
-  }, [session]);
-  
-  useEffect(() => {
-    if (!session || !('serviceWorker' in navigator) || !('PushManager' in window)) {
-      setIsPushLoading(false);
-      return;
-    }
-    
-    const checkSubscription = async () => {
-        setIsPushLoading(true);
-        try {
-            const registration = await navigator.serviceWorker.ready;
-            const subscription = await registration.pushManager.getSubscription();
-            if (subscription) {
-                setIsPushEnabled(true);
-                await saveSubscription(subscription);
-            } else {
-                setIsPushEnabled(false);
-            }
-        } catch (error) {
-            console.error('Error checking push subscription:', error);
-            setIsPushEnabled(false);
-        } finally {
-            setIsPushLoading(false);
-        }
-    };
-    checkSubscription();
-  }, [session, saveSubscription]);
-
-  const urlBase64ToUint8Array = (base64String: string) => {
-      const padding = "=".repeat((4 - base64String.length % 4) % 4);
-      const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
-      const rawData = window.atob(base64);
-      const outputArray = new Uint8Array(rawData.length);
-      for (let i = 0; i < rawData.length; ++i) {
-          outputArray[i] = rawData.charCodeAt(i);
-      }
-      return outputArray;
-  };
-
+  // --- OneSignal Push Subscription Management ---
   const subscribeToPush = async () => {
-    const vapidPublicKey = import.meta.env.VITE_VAPID_PUBLIC_KEY;
-    if (!vapidPublicKey) {
-      console.error('VITE_VAPID_PUBLIC_KEY not found in .env. Cannot subscribe to push notifications.');
-      alert('Push notification setup is incomplete on the server. Please contact an administrator.');
-      return;
-    }
     if (!session) return;
     setIsPushLoading(true);
 
     try {
-        const registration = await navigator.serviceWorker.ready;
-        const subscription = await registration.pushManager.subscribe({
-            userVisibleOnly: true,
-            applicationServerKey: urlBase64ToUint8Array(vapidPublicKey),
-        });
+      const playerId = await oneSignalService.subscribe();
+      if (playerId) {
+        await oneSignalService.savePlayerIdToDatabase(session.user.id);
         
-        await saveSubscription(subscription);
-        setIsPushEnabled(true);
-    } catch (error) {
-        console.error('Failed to subscribe to push notifications:', error);
-        setIsPushEnabled(false);
-        if (globalThis.Notification.permission === 'denied') {
-             alert("Notification permission was denied. Please enable it in your browser settings to receive push alerts.");
+        // Set user tags based on subscribed topics
+        const subscribedTopics = topics.filter(t => t.subscribed);
+        if (subscribedTopics.length > 0) {
+          const tags: Record<string, string> = {};
+          subscribedTopics.forEach(topic => {
+            tags[`topic_${topic.id}`] = 'true';
+          });
+          await oneSignalService.setUserTags(tags);
         }
+        
+        setIsPushEnabled(true);
+      }
+    } catch (error) {
+      console.error('Failed to subscribe to push notifications:', error);
+      alert('Failed to enable push notifications. Please try again.');
     } finally {
-        setIsPushLoading(false);
+      setIsPushLoading(false);
     }
   };
   
   const unsubscribeFromPush = async () => {
-      setIsPushLoading(true);
-      try {
-          const registration = await navigator.serviceWorker.ready;
-          const subscription = await registration.pushManager.getSubscription();
-          if (subscription) {
-              await subscription.unsubscribe();
-              await supabase.from('push_subscriptions').delete().eq('endpoint', subscription.endpoint);
-              setIsPushEnabled(false);
-          }
-      } catch (error) {
-          console.error('Failed to unsubscribe from push:', error);
-      } finally {
-          setIsPushLoading(false);
-      }
-  }
+    if (!session) return;
+    setIsPushLoading(true);
+    
+    try {
+      await oneSignalService.unsubscribe();
+      await oneSignalService.removePlayerIdFromDatabase(session.user.id);
+      setIsPushEnabled(false);
+    } catch (error) {
+      console.error('Failed to unsubscribe from push:', error);
+    } finally {
+      setIsPushLoading(false);
+    }
+  };
 
   useEffect(() => {
     if (theme === 'dark') {
@@ -426,6 +316,15 @@ const handleNewNotification = useCallback(async (notification: Notification) => 
   };
 
   const handleLogout = async () => {
+    // Unsubscribe from push notifications on logout
+    if (isPushEnabled && session) {
+      try {
+        await oneSignalService.removePlayerIdFromDatabase(session.user.id);
+      } catch (error) {
+        console.error('Error removing player ID on logout:', error);
+      }
+    }
+    
     await supabase.auth.signOut();
     setUnauthedPage('landing');
   };
@@ -434,7 +333,7 @@ const handleNewNotification = useCallback(async (notification: Notification) => 
     if (session) {
       setCurrentPage(page);
     }
-    setIsSidebarOpen(false); // Close sidebar on navigation
+    setIsSidebarOpen(false);
   };
   
   const sendTestAlert = useCallback(async () => {
@@ -467,8 +366,6 @@ const handleNewNotification = useCallback(async (notification: Notification) => 
         topic_id: topicId,
     };
     
-    // The alert is created on the backend, which now triggers a push notification.
-    // We only need to show a local toast and play a sound if the app is active.
     const { error } = await supabase.functions.invoke('create-notification', {
         body: newAlert,
     });
@@ -512,11 +409,33 @@ const handleNewNotification = useCallback(async (notification: Notification) => 
     if(topic.subscribed && topic.subscription_id) {
         // Unsubscribe
         const { error } = await supabase.from('topic_subscriptions').delete().eq('id', topic.subscription_id);
-        if(error) console.error("Error unsubscribing:", error);
+        if(error) {
+          console.error("Error unsubscribing:", error);
+        } else {
+          // Remove OneSignal tag
+          if (isPushEnabled) {
+            try {
+              await oneSignalService.removeUserTags([`topic_${topic.id}`]);
+            } catch (error) {
+              console.error('Error removing OneSignal tag:', error);
+            }
+          }
+        }
     } else {
         // Subscribe
         const { error } = await supabase.from('topic_subscriptions').insert([{ user_id: session.user.id, topic_id: topic.id }]);
-        if(error) console.error("Error subscribing:", error);
+        if(error) {
+          console.error("Error subscribing:", error);
+        } else {
+          // Add OneSignal tag
+          if (isPushEnabled) {
+            try {
+              await oneSignalService.setUserTags({ [`topic_${topic.id}`]: 'true' });
+            } catch (error) {
+              console.error('Error setting OneSignal tag:', error);
+            }
+          }
+        }
     }
   }
 
