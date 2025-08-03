@@ -35,7 +35,7 @@ const CodeBlock: React.FC<{ code: string }> = ({ code }) => {
 
 export const ApiDocsPage: React.FC<ApiDocsPageProps> = ({ onNavigate, onLogout, setIsSidebarOpen, notifications, openSettings, systemStatus, session }) => {
   const [activeTab, setActiveTab] = useState('siteDown');
-  const endpointUrl = 'https://rswwlwybqsinzckzwcpb.supabase.co/functions/v1/create-notification';
+  const endpointUrl = 'https://ledvmlsdazrzntvzbeww.supabase.co/functions/v1/hyper-worker';
 
   const requestExamples: { [key: string]: string } = {
     siteDown: JSON.stringify({
