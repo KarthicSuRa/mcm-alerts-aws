@@ -134,13 +134,17 @@ function App() {
           console.log('🔔 Handling foreground notification:', notification);
           
           const newNotification: Notification = {
-            id: notification.id,
-            title: notification.title,
-            message: notification.body,
+            id: notification.id || `onesignal-${Date.now()}`,
+            type: 'server_alert',
+            title: notification.title || 'New Notification',
+            message: notification.body || notification.message || '',
             severity: mapOneSignalSeverity(notification),
-            status: 'new',
+            status: 'new' as NotificationStatus,
             created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+            timestamp: new Date().toISOString(),
             topic_id: notification.data?.topic_id || null,
+            site: notification.data?.site || null,
             comments: []
           };
           
@@ -176,12 +180,15 @@ function App() {
 
   const mapOneSignalSeverity = (notification: any): Severity => {
     if (notification.data?.severity) {
-      return notification.data.severity;
+      const severity = notification.data.severity.toLowerCase();
+      if (['low', 'medium', 'high'].includes(severity)) {
+        return severity as Severity;
+      }
     }
     
     switch (notification.priority) {
-      case 10: return 'critical';
-      case 5: return 'high';
+      case 10: return 'high';
+      case 5: return 'medium';
       default: return 'medium';
     }
   };
