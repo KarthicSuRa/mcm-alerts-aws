@@ -25,7 +25,6 @@ export class OneSignalService {
     return OneSignalService.instance;
   }
 
-  // Check if browser supports push notifications
   private isPushSupported(): boolean {
     return (
       'serviceWorker' in navigator &&
@@ -35,9 +34,7 @@ export class OneSignalService {
     );
   }
 
-  // Enhanced initialization with better error handling
   async initialize(): Promise<void> {
-    // Prevent multiple initializations
     if (this.initialized) {
       console.log('🔔 OneSignal already initialized, skipping...');
       return;
@@ -45,7 +42,6 @@ export class OneSignalService {
 
     if (this.initializing) {
       console.log('🔔 OneSignal initialization in progress, waiting...');
-      // Wait for the current initialization to complete
       while (this.initializing && this.retryCount < this.maxRetries) {
         await new Promise(resolve => setTimeout(resolve, 100));
       }
@@ -64,10 +60,8 @@ export class OneSignalService {
     this.initializing = true;
 
     try {
-      // Wait for OneSignal SDK to load
       await this.waitForOneSignal();
 
-      // Check if OneSignal is already initialized
       try {
         if (window.OneSignal?.User?.PushSubscription) {
           const state = await window.OneSignal.User.PushSubscription.optedIn;
@@ -79,30 +73,22 @@ export class OneSignalService {
         console.log('🔔 OneSignal not yet initialized, proceeding...');
       }
 
-      // Initialize OneSignal with updated configuration
       console.log('🔔 Initializing OneSignal with app ID:', this.appId);
       
       await window.OneSignal.init({
         appId: this.appId,
         allowLocalhostAsSecureOrigin: true,
-        
-        // Updated notification configuration
+        serviceWorkerParam: { scope: '/onesignal/' },
+        serviceWorkerPath: 'onesignal/OneSignalSDKWorker.js',
         notifyButton: {
-          enable: false, // We handle our own UI
+          enable: false,
         },
-        
-        // Disable automatic prompts
+        persistNotification: true, // Important for foreground notifications
         autoRegister: false,
-        
-        // Safari web push ID (if using Safari)
         safari_web_id: import.meta.env.VITE_SAFARI_WEB_ID,
-        
-        // Updated welcome notification config
         welcomeNotification: {
           disable: true,
         },
-        
-        // Updated prompt configuration
         promptOptions: {
           slidedown: {
             prompts: [
@@ -126,7 +112,6 @@ export class OneSignalService {
     } catch (error) {
       console.error('❌ Failed to initialize OneSignal:', error);
       
-      // Handle common initialization errors
       if (error instanceof Error) {
         if (error.message.includes('initialized') || error.message.includes('init')) {
           console.log('🔔 OneSignal may already be initialized, marking as initialized');
@@ -135,7 +120,6 @@ export class OneSignalService {
         }
       }
       
-      // Retry initialization if failed
       if (this.retryCount < this.maxRetries) {
         this.retryCount++;
         this.initializing = false;
@@ -150,9 +134,49 @@ export class OneSignalService {
     }
   }
 
+  async setupForegroundNotifications(callback: (notification: any) => void): Promise<void> {
+    if (!this.initialized) {
+      await this.initialize();
+    }
+
+    try {
+      if (window.OneSignal?.Notifications) {
+        console.log('🔔 Setting up foreground notification listener (new API)');
+        
+        window.OneSignal.Notifications.addEventListener('foregroundWillDisplay', (event: any) => {
+          console.log('🔔 Foreground notification received (new API):', event);
+          event.preventDefault(); // Prevent default OneSignal display
+          callback(event.notification);
+        });
+        
+        window.OneSignal.Notifications.addEventListener('click', (event: any) => {
+          console.log('🔔 Notification clicked (new API):', event);
+          callback(event.notification);
+        });
+      } 
+      else if (window.OneSignal?.on) {
+        console.log('🔔 Setting up foreground notification listener (legacy API)');
+        
+        window.OneSignal.on('notificationDisplay', (event: any) => {
+          console.log('🔔 Foreground notification received (legacy API):', event);
+          callback(event);
+        });
+        
+        window.OneSignal.on('notificationClick', (event: any) => {
+          console.log('🔔 Notification clicked (legacy API):', event);
+          callback(event);
+        });
+      } else {
+        console.warn('⚠️ OneSignal foreground notification API not available');
+      }
+    } catch (error) {
+      console.error('❌ Failed to set up foreground notification listener:', error);
+    }
+  }
+
   private waitForOneSignal(): Promise<void> {
     return new Promise((resolve, reject) => {
-      const maxAttempts = 150; // Increased timeout
+      const maxAttempts = 150;
       let attempts = 0;
 
       const checkOneSignal = () => {
@@ -171,56 +195,9 @@ export class OneSignalService {
     });
   }
 
-  // Enhanced permission request with better error handling
-  async requestNotificationPermission(): Promise<boolean> {
-    if (!this.initialized) {
-      await this.initialize();
-    }
-
-    if (!this.isPushSupported()) {
-      console.warn('🔔 Push notifications not supported');
-      return false;
-    }
-
-    try {
-      // First check current permission using native API as fallback
-      if ('Notification' in window) {
-        const currentPermission = Notification.permission;
-        if (currentPermission === 'denied') {
-          console.log('🔔 Notification permission is denied');
-          return false;
-        }
-        if (currentPermission === 'granted') {
-          console.log('🔔 Notification permission already granted');
-          return true;
-        }
-      }
-
-      // Try OneSignal's permission request
-      let permission = false;
-      try {
-        if (window.OneSignal?.Notifications?.requestPermission) {
-          permission = await window.OneSignal.Notifications.requestPermission();
-        } else {
-          // Fallback to native permission request
-          const result = await Notification.requestPermission();
-          permission = result === 'granted';
-        }
-      } catch (error) {
-        console.error('🔔 OneSignal permission request failed, trying native API:', error);
-        // Fallback to native permission request
-        const result = await Notification.requestPermission();
-        permission = result === 'granted';
-      }
-
-      console.log('🔔 Permission result:', permission);
-      return permission;
-
-    } catch (error) {
-      console.error('❌ Failed to request notification permission:', error);
-      return false;
-    }
-  }
+  // ... (keep all your existing methods unchanged below this point)
+  // isSubscribed(), getPlayerId(), subscribe(), unsubscribe(), etc.
+}
 
   // Enhanced subscription status check
   async isSubscribed(): Promise<boolean> {
