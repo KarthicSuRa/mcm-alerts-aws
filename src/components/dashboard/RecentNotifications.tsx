@@ -6,8 +6,8 @@ import { NotificationDetail } from './NotificationDetail';
 
 interface RecentNotificationsProps {
     notifications: Notification[];
-    onUpdateNotification: (notificationId: string, updates: NotificationUpdatePayload) => void;
-    onAddComment: (notificationId: string, text: string) => void;
+    onUpdateNotification: (notificationId: string, updates: NotificationUpdatePayload) => Promise<void>;
+    onAddComment: (notificationId: string, text: string) => Promise<void>;
     topics: Topic[];
     session: Session;
 }
@@ -17,8 +17,7 @@ export const RecentNotifications: React.FC<RecentNotificationsProps> = ({ notifi
     const [timeFilter, setTimeFilter] = useState<'all' | '1h' | '6h' | '24h'>('all');
     const [searchTerm, setSearchTerm] = useState('');
     const [expandedId, setExpandedId] = useState<string | null>(null);
-    // Track optimistic updates locally
-    const [optimisticUpdates, setOptimisticUpdates] = useState<Record<string, Partial<Notification>>>({});
+    const [processingIds, setProcessingIds] = useState<Set<string>>(new Set());
     
     const filteredNotifications = useMemo(() => {
         const subscribedTopicIds = new Set(topics.filter(t => t.subscribed).map(t => t.id));
@@ -26,12 +25,6 @@ export const RecentNotifications: React.FC<RecentNotificationsProps> = ({ notifi
         let notifs = [...notifications].filter(n => 
             !n.topic_id || subscribedTopicIds.has(n.topic_id)
         );
-
-        // Apply optimistic updates
-        notifs = notifs.map(n => ({
-            ...n,
-            ...optimisticUpdates[n.id] // Apply any pending optimistic updates
-        }));
 
         if (severityFilter !== 'all') {
             notifs = notifs.filter(n => n.severity === severityFilter);
@@ -63,44 +56,66 @@ export const RecentNotifications: React.FC<RecentNotificationsProps> = ({ notifi
         }
         
         return notifs.sort((a,b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-    }, [notifications, severityFilter, timeFilter, searchTerm, topics, optimisticUpdates]);
+    }, [notifications, severityFilter, timeFilter, searchTerm, topics]);
 
-    // FIXED: Optimistic updates for immediate UI feedback
+    // SIMPLIFIED: Just update status, no automatic comment
     const handleQuickAcknowledge = async (e: React.MouseEvent, notification: Notification) => {
         e.stopPropagation();
         
-        // Immediately update UI optimistically
-        setOptimisticUpdates(prev => ({
-            ...prev,
-            [notification.id]: { status: 'acknowledged' as NotificationStatus }
-        }));
+        // Prevent multiple clicks
+        if (processingIds.has(notification.id)) return;
+        
+        setProcessingIds(prev => new Set([...prev, notification.id]));
         
         try {
-            // Update notification status in database
+            console.log('🔧 Quick acknowledging notification:', notification.id);
+            
+            // Only update the notification status - no comment
             await onUpdateNotification(notification.id, { status: 'acknowledged' });
-            
-            // Add comment to database
-            await onAddComment(notification.id, `Status changed to acknowledged.`);
-            
-            // Clear optimistic update once successful
-            setOptimisticUpdates(prev => {
-                const updated = { ...prev };
-                delete updated[notification.id];
-                return updated;
-            });
+            console.log('✅ Notification status updated successfully');
             
         } catch (error) {
-            console.error('Error acknowledging notification:', error);
-            
-            // Revert optimistic update on error
-            setOptimisticUpdates(prev => {
-                const updated = { ...prev };
-                delete updated[notification.id];
-                return updated;
-            });
-            
-            // Show error message
+            console.error('❌ Error acknowledging notification:', error);
             alert('Failed to acknowledge notification. Please try again.');
+        } finally {
+            // Remove from processing after a delay to prevent rapid clicks
+            setTimeout(() => {
+                setProcessingIds(prev => {
+                    const newSet = new Set(prev);
+                    newSet.delete(notification.id);
+                    return newSet;
+                });
+            }, 1500); // Increased delay to ensure real-time update has time to process
+        }
+    };
+
+    const handleQuickResolve = async (e: React.MouseEvent, notification: Notification) => {
+        e.stopPropagation();
+        
+        // Prevent multiple clicks
+        if (processingIds.has(notification.id)) return;
+        
+        setProcessingIds(prev => new Set([...prev, notification.id]));
+        
+        try {
+            console.log('🔧 Quick resolving notification:', notification.id);
+            
+            // Only update the notification status - no comment
+            await onUpdateNotification(notification.id, { status: 'resolved' });
+            console.log('✅ Notification resolved successfully');
+            
+        } catch (error) {
+            console.error('❌ Error resolving notification:', error);
+            alert('Failed to resolve notification. Please try again.');
+        } finally {
+            // Remove from processing after a delay
+            setTimeout(() => {
+                setProcessingIds(prev => {
+                    const newSet = new Set(prev);
+                    newSet.delete(notification.id);
+                    return newSet;
+                });
+            }, 1500);
         }
     };
 
@@ -152,6 +167,8 @@ export const RecentNotifications: React.FC<RecentNotificationsProps> = ({ notifi
                             <p className="text-sm mt-1">Try sending a test alert or adjusting filters!</p>
                         </div>
                     ) : filteredNotifications.map(n => {
+                        const isProcessing = processingIds.has(n.id);
+                        
                         return (
                             <div key={n.id} className="bg-card rounded-lg overflow-hidden transition-shadow duration-300 hover:shadow-2xl border border-border">
                                 <div 
@@ -167,24 +184,52 @@ export const RecentNotifications: React.FC<RecentNotificationsProps> = ({ notifi
                                             <p className="text-sm text-muted-foreground mt-1 truncate">{n.message}</p>
                                             <div className="flex items-center gap-3 mt-3">
                                                 <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold rounded-full ${STATUS_INFO[n.status].bg} ${STATUS_INFO[n.status].text} capitalize`}>
-                                                    {n.status === 'new' && <div className="w-2 h-2 rounded-full bg-destructive animate-blink"></div>}
+                                                    {n.status === 'new' && !isProcessing && <div className="w-2 h-2 rounded-full bg-destructive animate-blink"></div>}
+                                                    {isProcessing && <div className="w-3 h-3 border border-current border-t-transparent rounded-full animate-spin"></div>}
                                                     <Icon name={STATUS_INFO[n.status].icon} className="w-3.5 h-3.5" />
-                                                    {n.status}
+                                                    {isProcessing ? 'Processing...' : n.status}
                                                 </span>
+                                                {n.comments && n.comments.length > 0 && (
+                                                    <span className="inline-flex items-center gap-1 px-2 py-1 text-xs text-muted-foreground bg-muted rounded-full">
+                                                        <Icon name="message-circle" className="w-3 h-3" />
+                                                        {n.comments.length}
+                                                    </span>
+                                                )}
                                             </div>
                                         </div>
                                         <div className="flex items-center gap-2">
                                              <p className="text-xs text-muted-foreground flex-shrink-0">{new Date(n.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</p>
-                                            {n.status === 'new' && (
-                                                <button
-                                                    onClick={(e) => handleQuickAcknowledge(e, n)}
-                                                    className="p-1.5 rounded-full text-muted-foreground hover:bg-accent hover:text-primary"
-                                                    title="Quick Acknowledge"
-                                                    disabled={optimisticUpdates[n.id]?.status === 'acknowledged'}
-                                                >
-                                                    <Icon name="check" className="w-5 h-5" />
-                                                </button>
-                                            )}
+                                            
+                                            {/* Quick Action Buttons */}
+                                            <div className="flex gap-1">
+                                                {n.status === 'new' && !isProcessing && (
+                                                    <>
+                                                        <button
+                                                            onClick={(e) => handleQuickAcknowledge(e, n)}
+                                                            className="p-1.5 rounded-full text-muted-foreground hover:bg-yellow-100 hover:text-yellow-600 dark:hover:bg-yellow-900/30 dark:hover:text-yellow-400"
+                                                            title="Quick Acknowledge"
+                                                        >
+                                                            <Icon name="check" className="w-4 h-4" />
+                                                        </button>
+                                                        <button
+                                                            onClick={(e) => handleQuickResolve(e, n)}
+                                                            className="p-1.5 rounded-full text-muted-foreground hover:bg-green-100 hover:text-green-600 dark:hover:bg-green-900/30 dark:hover:text-green-400"
+                                                            title="Quick Resolve"
+                                                        >
+                                                            <Icon name="check-check" className="w-4 h-4" />
+                                                        </button>
+                                                    </>
+                                                )}
+                                                {n.status === 'acknowledged' && !isProcessing && (
+                                                    <button
+                                                        onClick={(e) => handleQuickResolve(e, n)}
+                                                        className="p-1.5 rounded-full text-muted-foreground hover:bg-green-100 hover:text-green-600 dark:hover:bg-green-900/30 dark:hover:text-green-400"
+                                                        title="Quick Resolve"
+                                                    >
+                                                        <Icon name="check-check" className="w-4 h-4" />
+                                                    </button>
+                                                )}
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
