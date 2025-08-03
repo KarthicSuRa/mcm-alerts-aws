@@ -250,7 +250,7 @@ function App() {
         const notificationChannel = supabase
           .channel('notifications-channel', {
             config: {
-              broadcast: { self: false },
+              broadcast: { self: true }, // CHANGED: Allow self-triggered events
               presence: { key: session.user.id }
             }
           })
@@ -274,7 +274,8 @@ function App() {
             console.log('🟡 Notification UPDATE received:', {
               id: payload.new.id,
               oldStatus: payload.old?.status,
-              newStatus: payload.new.status
+              newStatus: payload.new.status,
+              fullPayload: payload.new
             });
             
             setNotifications(prev => {
@@ -283,17 +284,34 @@ function App() {
                   console.log('🟢 Updating notification in state:', {
                     id: n.id,
                     oldStatus: n.status,
-                    newStatus: payload.new.status
+                    newStatus: payload.new.status,
+                    beforeUpdate: n,
+                    afterUpdate: payload.new
                   });
                   
-                  return {
+                  // FIXED: Ensure we merge properly and preserve all fields
+                  const updatedNotification = {
                     ...n,           // Keep existing data (including comments)
                     ...payload.new, // Override with new data from database
-                    comments: n.comments || [] // Ensure comments are preserved
+                    comments: n.comments || [], // Ensure comments are preserved
+                    // Explicitly ensure critical fields are updated
+                    status: payload.new.status,
+                    updated_at: payload.new.updated_at || new Date().toISOString()
                   } as Notification;
+                  
+                  console.log('🟢 Final updated notification:', updatedNotification);
+                  return updatedNotification;
                 }
                 return n;
               });
+              
+              console.log('🔄 State updated, checking if notification exists in new state...');
+              const updatedNotification = updated.find(n => n.id === payload.new.id);
+              if (updatedNotification) {
+                console.log('✅ Notification found in updated state with status:', updatedNotification.status);
+              } else {
+                console.log('❌ Notification NOT found in updated state!');
+              }
               
               return updated;
             });
@@ -558,6 +576,34 @@ function App() {
       document.documentElement.classList.remove('dark');
     }
   }, [theme]);
+
+  // DEBUG: Add this effect to track notification state changes
+  useEffect(() => {
+    const handleNotificationUpdate = (event: CustomEvent) => {
+      console.log('🎯 Custom notification update event received:', event.detail);
+    };
+    
+    window.addEventListener('notification-updated', handleNotificationUpdate as EventListener);
+    
+    return () => {
+      window.removeEventListener('notification-updated', handleNotificationUpdate as EventListener);
+    };
+  }, []);
+
+  // DEBUG: Log notifications state changes
+  useEffect(() => {
+    console.log('📊 Notifications state updated. Current notifications:', {
+      total: notifications.length,
+      byStatus: {
+        new: notifications.filter(n => n.status === 'new').length,
+        acknowledged: notifications.filter(n => n.status === 'acknowledged').length,
+        resolved: notifications.filter(n => n.status === 'resolved').length
+      },
+      recentUpdates: notifications
+        .filter(n => n.updated_at && new Date(n.updated_at).getTime() > Date.now() - 10000) // Last 10 seconds
+        .map(n => ({ id: n.id, status: n.status, updated_at: n.updated_at }))
+    });
+  }, [notifications]);
   
   const handleUnauthedNavigate = useCallback((page: 'landing' | 'login') => {
     setUnauthedPage(page);
@@ -642,35 +688,87 @@ function App() {
   const updateNotification = useCallback(async (notificationId: string, updates: NotificationUpdatePayload) => {
     console.log('🔧 Updating notification:', { notificationId, updates });
     
-    const { error, data } = await supabase
-      .from('notifications')
-      .update(updates)
-      .eq('id', notificationId)
-      .select(); // Add select() to see what was actually updated
-    
-    if (error) {
-      console.error("❌ Error updating notification:", error);
-      throw error;
-    } else {
+    try {
+      // IMPORTANT: Add .select() to get the updated data back
+      const { error, data } = await supabase
+        .from('notifications')
+        .update(updates)
+        .eq('id', notificationId)
+        .select()
+        .single(); // Get the single updated record
+      
+      if (error) {
+        console.error("❌ Error updating notification:", error);
+        throw error;
+      }
+      
       console.log('✅ Notification updated successfully:', data);
+      
+      // FALLBACK: Update local state immediately if real-time doesn't work
+      // This ensures the UI updates even if real-time subscriptions have issues
+      setNotifications(prev => prev.map(n => {
+        if (n.id === notificationId) {
+          console.log('🔄 Fallback: Updating notification in local state');
+          return {
+            ...n,
+            ...updates,
+            // Preserve comments and other data that might not be in updates
+            comments: n.comments || []
+          } as Notification;
+        }
+        return n;
+      }));
+      
+    } catch (error) {
+      console.error("❌ Failed to update notification:", error);
+      throw error; // Re-throw to let the calling component handle it
     }
   }, []);
-  
+
   const addComment = useCallback(async (notificationId: string, text: string) => {
-    if (!session) return;
+    if (!session) {
+      throw new Error('No session available');
+    }
     
     console.log('💬 Adding comment:', { notificationId, text });
     
-    const { error, data } = await supabase
-      .from('comments')
-      .insert([{ notification_id: notificationId, text, user_id: session.user.id }])
-      .select();
-    
-    if (error) {
-      console.error("❌ Error adding comment:", error);
-      throw error;
-    } else {
+    try {
+      const { error, data } = await supabase
+        .from('comments')
+        .insert([{ 
+          notification_id: notificationId, 
+          text: text.trim(), 
+          user_id: session.user.id 
+        }])
+        .select()
+        .single();
+      
+      if (error) {
+        console.error("❌ Error adding comment:", error);
+        throw error;
+      }
+      
       console.log('✅ Comment added successfully:', data);
+      
+      // FALLBACK: Update local state immediately
+      const newComment = {
+        ...data,
+        user_email: session.user.email ?? 'Current User'
+      } as Comment;
+      
+      setNotifications(prev => prev.map(n => 
+        n.id === notificationId 
+          ? { 
+              ...n, 
+              comments: [...(n.comments || []), newComment]
+                .sort((a,b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()) 
+            } 
+          : n
+      ));
+      
+    } catch (error) {
+      console.error("❌ Failed to add comment:", error);
+      throw error;
     }
   }, [session]);
 
