@@ -161,9 +161,13 @@ export class OneSignalService {
           console.log('🔔 Foreground notification received (new API):', event);
           event.preventDefault();
           
-          // Handle the notification data properly
+          // Generate a consistent ID based on OneSignal notification ID or content
+          const oneSignalId = event.notification?.notificationId;
+          const notificationId = oneSignalId || `fg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+          
           const notificationData = {
-            id: event.notification?.notificationId || `fg-${Date.now()}`,
+            id: notificationId,
+            oneSignalId: oneSignalId, // Keep track of original OneSignal ID
             title: event.notification?.title || 'Notification',
             body: event.notification?.body || '',
             message: event.notification?.body || '',
@@ -177,8 +181,12 @@ export class OneSignalService {
         window.OneSignal.Notifications.addEventListener('click', (event: any) => {
           console.log('🔔 Notification clicked (new API):', event);
           
+          const oneSignalId = event.notification?.notificationId;
+          const notificationId = oneSignalId || `click-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+          
           const notificationData = {
-            id: event.notification?.notificationId || `click-${Date.now()}`,
+            id: notificationId,
+            oneSignalId: oneSignalId,
             title: event.notification?.title || 'Notification',
             body: event.notification?.body || '',
             message: event.notification?.body || '',
@@ -195,8 +203,12 @@ export class OneSignalService {
         window.OneSignal.on('notificationDisplay', (event: any) => {
           console.log('🔔 Foreground notification received (legacy API):', event);
           
+          // Generate a consistent ID
+          const notificationId = event.id || `legacy-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+          
           const notificationData = {
-            id: event.id || `legacy-${Date.now()}`,
+            id: notificationId,
+            oneSignalId: event.id,
             title: event.heading || event.title || 'Notification',
             body: event.content || event.message || '',
             message: event.content || event.message || '',
@@ -210,8 +222,11 @@ export class OneSignalService {
         window.OneSignal.on('notificationClick', (event: any) => {
           console.log('🔔 Notification clicked (legacy API):', event);
           
+          const notificationId = event.id || `legacy-click-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+          
           const notificationData = {
-            id: event.id || `legacy-click-${Date.now()}`,
+            id: notificationId,
+            oneSignalId: event.id,
             title: event.heading || event.title || 'Notification',
             body: event.content || event.message || '',
             message: event.content || event.message || '',
@@ -231,7 +246,7 @@ export class OneSignalService {
 
   private waitForOneSignal(): Promise<void> {
     return new Promise((resolve, reject) => {
-      const maxAttempts = 100; // Reduced from 150
+      const maxAttempts = 100;
       let attempts = 0;
 
       const checkOneSignal = () => {
@@ -434,7 +449,7 @@ export class OneSignalService {
       console.log('🔔 Waiting for subscription to be processed...');
       let playerId = null;
       let attempts = 0;
-      const maxAttempts = 15; // Reduced from 20
+      const maxAttempts = 15;
       
       while (!playerId && attempts < maxAttempts) {
         await new Promise(resolve => setTimeout(resolve, 1000 + (attempts * 200)));
