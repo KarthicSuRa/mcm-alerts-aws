@@ -17,6 +17,8 @@ export const RecentNotifications: React.FC<RecentNotificationsProps> = ({ notifi
     const [timeFilter, setTimeFilter] = useState<'all' | '1h' | '6h' | '24h'>('all');
     const [searchTerm, setSearchTerm] = useState('');
     const [expandedId, setExpandedId] = useState<string | null>(null);
+    // Track optimistic updates locally
+    const [optimisticUpdates, setOptimisticUpdates] = useState<Record<string, Partial<Notification>>>({});
     
     const filteredNotifications = useMemo(() => {
         const subscribedTopicIds = new Set(topics.filter(t => t.subscribed).map(t => t.id));
@@ -24,6 +26,12 @@ export const RecentNotifications: React.FC<RecentNotificationsProps> = ({ notifi
         let notifs = [...notifications].filter(n => 
             !n.topic_id || subscribedTopicIds.has(n.topic_id)
         );
+
+        // Apply optimistic updates
+        notifs = notifs.map(n => ({
+            ...n,
+            ...optimisticUpdates[n.id] // Apply any pending optimistic updates
+        }));
 
         if (severityFilter !== 'all') {
             notifs = notifs.filter(n => n.severity === severityFilter);
@@ -55,20 +63,44 @@ export const RecentNotifications: React.FC<RecentNotificationsProps> = ({ notifi
         }
         
         return notifs.sort((a,b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-    }, [notifications, severityFilter, timeFilter, searchTerm, topics]);
+    }, [notifications, severityFilter, timeFilter, searchTerm, topics, optimisticUpdates]);
 
-    // FIXED: Changed order of operations - update status first, then add comment
+    // FIXED: Optimistic updates for immediate UI feedback
     const handleQuickAcknowledge = async (e: React.MouseEvent, notification: Notification) => {
         e.stopPropagation();
         
+        // Immediately update UI optimistically
+        setOptimisticUpdates(prev => ({
+            ...prev,
+            [notification.id]: { status: 'acknowledged' as NotificationStatus }
+        }));
+        
         try {
-            // First update the notification status
+            // Update notification status in database
             await onUpdateNotification(notification.id, { status: 'acknowledged' });
             
-            // Then add the comment
+            // Add comment to database
             await onAddComment(notification.id, `Status changed to acknowledged.`);
+            
+            // Clear optimistic update once successful
+            setOptimisticUpdates(prev => {
+                const updated = { ...prev };
+                delete updated[notification.id];
+                return updated;
+            });
+            
         } catch (error) {
             console.error('Error acknowledging notification:', error);
+            
+            // Revert optimistic update on error
+            setOptimisticUpdates(prev => {
+                const updated = { ...prev };
+                delete updated[notification.id];
+                return updated;
+            });
+            
+            // Show error message
+            alert('Failed to acknowledge notification. Please try again.');
         }
     };
 
@@ -148,6 +180,7 @@ export const RecentNotifications: React.FC<RecentNotificationsProps> = ({ notifi
                                                     onClick={(e) => handleQuickAcknowledge(e, n)}
                                                     className="p-1.5 rounded-full text-muted-foreground hover:bg-accent hover:text-primary"
                                                     title="Quick Acknowledge"
+                                                    disabled={optimisticUpdates[n.id]?.status === 'acknowledged'}
                                                 >
                                                     <Icon name="check" className="w-5 h-5" />
                                                 </button>
