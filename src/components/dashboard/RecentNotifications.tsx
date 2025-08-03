@@ -57,10 +57,19 @@ export const RecentNotifications: React.FC<RecentNotificationsProps> = ({ notifi
         return notifs.sort((a,b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
     }, [notifications, severityFilter, timeFilter, searchTerm, topics]);
 
-    const handleQuickAcknowledge = (e: React.MouseEvent, notification: Notification) => {
+    // FIXED: Changed order of operations - update status first, then add comment
+    const handleQuickAcknowledge = async (e: React.MouseEvent, notification: Notification) => {
         e.stopPropagation();
-        onAddComment(notification.id, `Status changed to acknowledged.`);
-        onUpdateNotification(notification.id, { status: 'acknowledged' });
+        
+        try {
+            // First update the notification status
+            await onUpdateNotification(notification.id, { status: 'acknowledged' });
+            
+            // Then add the comment
+            await onAddComment(notification.id, `Status changed to acknowledged.`);
+        } catch (error) {
+            console.error('Error acknowledging notification:', error);
+        }
     };
 
     return (
