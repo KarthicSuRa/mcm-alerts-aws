@@ -47,7 +47,8 @@ export class OneSignalService {
     }
 
     if (!this.appId) {
-      throw new Error('OneSignal App ID is not configured. Please set VITE_ONESIGNAL_APP_ID environment variable.');
+      console.warn('OneSignal App ID is not configured. Skipping OneSignal initialization.');
+      return;
     }
 
     if (!this.isPushSupported()) {
@@ -60,6 +61,8 @@ export class OneSignalService {
   }
 
   private async doInitialize(): Promise<void> {
+    if (this.initializing) return;
+    
     this.initializing = true;
 
     try {
@@ -133,7 +136,8 @@ export class OneSignalService {
         return this.initialize();
       }
       
-      throw error;
+      // Don't throw error to prevent blocking the app
+      console.error('❌ OneSignal initialization failed after all retries');
     } finally {
       this.initializing = false;
     }
@@ -142,6 +146,11 @@ export class OneSignalService {
   async setupForegroundNotifications(callback: (notification: any) => void): Promise<void> {
     if (!this.initialized) {
       await this.initialize();
+    }
+
+    if (!this.initialized) {
+      console.warn('⚠️ OneSignal not initialized, skipping foreground setup');
+      return;
     }
 
     try {
@@ -222,7 +231,7 @@ export class OneSignalService {
 
   private waitForOneSignal(): Promise<void> {
     return new Promise((resolve, reject) => {
-      const maxAttempts = 150;
+      const maxAttempts = 100; // Reduced from 150
       let attempts = 0;
 
       const checkOneSignal = () => {
@@ -246,8 +255,8 @@ export class OneSignalService {
       await this.initialize();
     }
 
-    if (!this.isPushSupported()) {
-      console.warn('🔔 Push notifications not supported');
+    if (!this.initialized || !this.isPushSupported()) {
+      console.warn('🔔 Push notifications not supported or OneSignal not initialized');
       return false;
     }
 
@@ -289,7 +298,7 @@ export class OneSignalService {
 
   async isSubscribed(): Promise<boolean> {
     if (!this.initialized) {
-      await this.initialize();
+      return false;
     }
 
     if (!this.isPushSupported()) {
@@ -332,7 +341,7 @@ export class OneSignalService {
 
   async getPlayerId(): Promise<string | null> {
     if (!this.initialized) {
-      await this.initialize();
+      return null;
     }
 
     if (!this.isPushSupported()) {
@@ -387,8 +396,8 @@ export class OneSignalService {
       await this.initialize();
     }
 
-    if (!this.isPushSupported()) {
-      throw new Error('Push notifications are not supported in this browser');
+    if (!this.initialized || !this.isPushSupported()) {
+      throw new Error('Push notifications are not supported in this browser or OneSignal not initialized');
     }
 
     try {
@@ -425,7 +434,7 @@ export class OneSignalService {
       console.log('🔔 Waiting for subscription to be processed...');
       let playerId = null;
       let attempts = 0;
-      const maxAttempts = 20; // Increased attempts
+      const maxAttempts = 15; // Reduced from 20
       
       while (!playerId && attempts < maxAttempts) {
         await new Promise(resolve => setTimeout(resolve, 1000 + (attempts * 200)));
@@ -437,7 +446,7 @@ export class OneSignalService {
           const isSubscribed = await this.isSubscribed();
           console.log(`🔔 Subscription status check: ${isSubscribed}`);
           if (isSubscribed) {
-            await new Promise(resolve => setTimeout(resolve, 2000));
+            await new Promise(resolve => setTimeout(resolve, 1000));
             playerId = await this.getPlayerId();
           }
         }
@@ -459,7 +468,7 @@ export class OneSignalService {
 
   async unsubscribe(): Promise<void> {
     if (!this.initialized) {
-      await this.initialize();
+      return;
     }
 
     try {
@@ -520,7 +529,7 @@ export class OneSignalService {
 
   async setUserTags(tags: Record<string, string>): Promise<void> {
     if (!this.initialized) {
-      await this.initialize();
+      return;
     }
 
     const validatedTags = this.validateTags(tags);
@@ -611,7 +620,7 @@ export class OneSignalService {
 
   async removeUserTags(tagKeys: string[]): Promise<void> {
     if (!this.initialized) {
-      await this.initialize();
+      return;
     }
 
     try {
@@ -689,12 +698,7 @@ export class OneSignalService {
 
   onSubscriptionChange(callback: (subscribed: boolean) => void): void {
     if (!this.initialized) {
-      console.warn('🔔 OneSignal not initialized yet, will set up listener after initialization');
-      this.initialize().then(() => {
-        this.setupSubscriptionChangeListener(callback);
-      }).catch(error => {
-        console.error('❌ Failed to initialize OneSignal for subscription listener:', error);
-      });
+      console.warn('🔔 OneSignal not initialized yet, skipping subscription listener setup');
       return;
     }
 
@@ -726,12 +730,7 @@ export class OneSignalService {
 
   onNotificationClick(callback: (event: any) => void): void {
     if (!this.initialized) {
-      console.warn('🔔 OneSignal not initialized yet, will set up listener after initialization');
-      this.initialize().then(() => {
-        this.setupNotificationClickListener(callback);
-      }).catch(error => {
-        console.error('❌ Failed to initialize OneSignal for notification click listener:', error);
-      });
+      console.warn('🔔 OneSignal not initialized yet, skipping notification click listener setup');
       return;
     }
 
@@ -759,20 +758,23 @@ export class OneSignalService {
   }
 
   async getDebugInfo(): Promise<any> {
-    if (!this.initialized) {
-      return { error: 'OneSignal not initialized' };
-    }
-  
     try {
       const info: any = {
         initialized: this.initialized,
         isLoaded: this.isLoaded(),
-        isSubscribed: await this.isSubscribed(),
-        playerId: await this.getPlayerId(),
         pushSupported: this.isPushSupported(),
         appId: this.appId,
         retryCount: this.retryCount,
       };
+
+      if (this.initialized) {
+        try {
+          info.isSubscribed = await this.isSubscribed();
+          info.playerId = await this.getPlayerId();
+        } catch (error) {
+          info.subscriptionError = error instanceof Error ? error.message : String(error);
+        }
+      }
   
       try {
         if ('Notification' in window) {
@@ -795,5 +797,14 @@ export class OneSignalService {
     } catch (error) {
       return { error: error instanceof Error ? error.message : String(error) };
     }
+  }
+
+  // Reset method for development/testing
+  reset(): void {
+    this.initialized = false;
+    this.initializing = false;
+    this.retryCount = 0;
+    this.initPromise = null;
+    console.log('🔄 OneSignal service reset');
   }
 }
