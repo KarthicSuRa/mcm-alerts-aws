@@ -31,7 +31,7 @@ function App() {
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [snoozedUntil, setSnoozedUntil] = useState<Date | null>(null);
   const [isPushEnabled, setIsPushEnabled] = useState(false);
-  const [isPushLoading, setIsPushLoading] = useState(false); // Changed to false initially
+  const [isPushLoading, setIsPushLoading] = useState(false);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [topics, setTopics] = useState<Topic[]>([]);
   const [toasts, setToasts] = useState<Notification[]>([]);
@@ -42,6 +42,7 @@ function App() {
   const dataFetched = useRef(false);
   const realtimeSubscriptions = useRef<Map<string, any>>(new Map());
   const initializationInProgress = useRef(false);
+  const pendingUpdates = useRef<Map<string, NodeJS.Timeout>>(new Map());
 
   const addToast = useCallback((notification: Notification) => {
     console.log('🍞 Adding toast notification:', notification.title);
@@ -98,6 +99,10 @@ function App() {
           setIsPushEnabled(false);
           setIsPushLoading(false);
           
+          // Clear pending updates
+          pendingUpdates.current.forEach(timeout => clearTimeout(timeout));
+          pendingUpdates.current.clear();
+          
           console.log('🧹 Clearing realtime subscriptions due to auth change');
           realtimeSubscriptions.current.forEach(channel => {
             try {
@@ -114,6 +119,9 @@ function App() {
     return () => {
       mounted = false;
       subscription.unsubscribe();
+      // Clear any pending timeouts
+      pendingUpdates.current.forEach(timeout => clearTimeout(timeout));
+      pendingUpdates.current.clear();
     };
   }, []);
 
@@ -215,8 +223,11 @@ function App() {
         oneSignalService.setupForegroundNotifications((notification) => {
           console.log('🔔 Handling foreground notification:', notification);
           
+          // Generate consistent ID for database storage
+          const dbNotificationId = `onesignal-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+          
           const newNotification: Notification = {
-            id: notification.id || `onesignal-${Date.now()}`,
+            id: dbNotificationId, // Use our generated ID for database
             type: 'server_alert',
             title: notification.title || 'New Notification',
             message: notification.body || notification.message || '',
@@ -227,12 +238,18 @@ function App() {
             timestamp: new Date().toISOString(),
             topic_id: notification.data?.topic_id || null,
             site: notification.data?.site || null,
-            comments: []
+            comments: [],
+            oneSignalId: notification.oneSignalId // Keep track of original OneSignal ID
           };
           
           setNotifications(prev => {
-            const exists = prev.some(n => n.id === newNotification.id);
-            return exists ? prev : [newNotification, ...prev];
+            const exists = prev.some(n => n.id === newNotification.id || (n as any).oneSignalId === notification.oneSignalId);
+            if (exists) {
+              console.log('🔄 Notification already exists, skipping');
+              return prev;
+            }
+            console.log('➕ Adding new OneSignal notification to list');
+            return [newNotification, ...prev];
           });
           
           handleNewNotification(newNotification);
@@ -275,6 +292,13 @@ function App() {
       return;
     }
     
+    // Cancel any pending update for this notification
+    const existingTimeout = pendingUpdates.current.get(notificationId);
+    if (existingTimeout) {
+      clearTimeout(existingTimeout);
+      pendingUpdates.current.delete(notificationId);
+    }
+    
     // Optimistic update
     setNotifications(prev => prev.map(n => {
       if (n.id === notificationId) {
@@ -293,37 +317,80 @@ function App() {
       return n;
     }));
     
-    try {
-      const { error, data } = await supabase
-        .from('notifications')
-        .update({
-          ...updates,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', notificationId)
-        .select()
-        .single();
-      
-      if (error) {
-        console.error("❌ Database update failed, reverting optimistic update:", error);
+    // Debounce database updates
+    const updateTimeout = setTimeout(async () => {
+      try {
+        console.log('🔧 Executing database update for notification:', notificationId);
         
-        // Revert optimistic update
-        setNotifications(prev => prev.map(n => {
-          if (n.id === notificationId) {
-            return originalNotification;
+        // Verify notification exists before updating
+        const { data: existingNotification, error: checkError } = await supabase
+          .from('notifications')
+          .select('id')
+          .eq('id', notificationId)
+          .single();
+        
+        if (checkError) {
+          if (checkError.code === 'PGRST116') {
+            console.error('❌ Notification not found in database:', notificationId);
+            // Revert optimistic update
+            setNotifications(prev => prev.map(n => {
+              if (n.id === notificationId) {
+                return originalNotification;
+              }
+              return n;
+            }));
+            return;
           }
-          return n;
-        }));
+          throw checkError;
+        }
         
+        if (!existingNotification) {
+          console.error('❌ Notification does not exist in database:', notificationId);
+          // Revert optimistic update
+          setNotifications(prev => prev.map(n => {
+            if (n.id === notificationId) {
+              return originalNotification;
+            }
+            return n;
+          }));
+          return;
+        }
+        
+        const { error, data } = await supabase
+          .from('notifications')
+          .update({
+            ...updates,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', notificationId)
+          .select()
+          .single();
+        
+        if (error) {
+          console.error("❌ Database update failed, reverting optimistic update:", error);
+          
+          // Revert optimistic update
+          setNotifications(prev => prev.map(n => {
+            if (n.id === notificationId) {
+              return originalNotification;
+            }
+            return n;
+          }));
+          
+          throw error;
+        }
+        
+        console.log('✅ Database update successful:', data);
+        
+      } catch (error) {
+        console.error("❌ Failed to update notification:", error);
         throw error;
+      } finally {
+        pendingUpdates.current.delete(notificationId);
       }
-      
-      console.log('✅ Database update successful:', data);
-      
-    } catch (error) {
-      console.error("❌ Failed to update notification:", error);
-      throw error;
-    }
+    }, 500); // 500ms debounce
+    
+    pendingUpdates.current.set(notificationId, updateTimeout);
   }, [notifications]);
 
   // Data Fetching and Realtime Subscriptions - Only when session exists
@@ -475,7 +542,12 @@ function App() {
           const newNotification = {...payload.new, comments: [] } as Notification;
           
           setNotifications(prev => {
-            const exists = prev.some(n => n.id === newNotification.id);
+            // Check for duplicates by ID or OneSignal ID
+            const exists = prev.some(n => 
+              n.id === newNotification.id || 
+              ((n as any).oneSignalId && (newNotification as any).oneSignalId && (n as any).oneSignalId === (newNotification as any).oneSignalId)
+            );
+            
             if (exists) {
               console.log('🔄 Notification already exists, skipping INSERT');
               return prev;
@@ -501,18 +573,23 @@ function App() {
             newStatus: payload.new.status
           });
           
-          setNotifications(prev => prev.map(n => {
-            if (n.id === payload.new.id) {
-              console.log('🟢 Applying realtime update to notification:', n.id);
-              return {
-                ...n,
-                ...payload.new,
-                comments: n.comments || [],
-                updated_at: payload.new.updated_at || new Date().toISOString()
-              } as Notification;
-            }
-            return n;
-          }));
+          // Only apply realtime updates if we don't have a pending local update
+          if (!pendingUpdates.current.has(payload.new.id)) {
+            setNotifications(prev => prev.map(n => {
+              if (n.id === payload.new.id) {
+                console.log('🟢 Applying realtime update to notification:', n.id);
+                return {
+                  ...n,
+                  ...payload.new,
+                  comments: n.comments || [],
+                  updated_at: payload.new.updated_at || new Date().toISOString()
+                } as Notification;
+              }
+              return n;
+            }));
+          } else {
+            console.log('⏸️ Skipping realtime update - local update pending for:', payload.new.id);
+          }
         })
         .subscribe((status, err) => {
           if (err) {
@@ -657,6 +734,10 @@ function App() {
     return () => {
       console.log('🧹 Cleaning up data fetching effect...');
       mounted = false;
+      
+      // Clear pending updates
+      pendingUpdates.current.forEach(timeout => clearTimeout(timeout));
+      pendingUpdates.current.clear();
       
       // Cleanup realtime subscriptions
       const cleanup = async () => {
@@ -853,6 +934,10 @@ function App() {
     dataFetched.current = false;
     oneSignalInitialized.current = false;
     initializationInProgress.current = false;
+    
+    // Clear pending updates
+    pendingUpdates.current.forEach(timeout => clearTimeout(timeout));
+    pendingUpdates.current.clear();
     
     await supabase.auth.signOut();
     setUnauthedPage('landing');
@@ -1141,7 +1226,8 @@ function App() {
                     isPushEnabled,
                     soundEnabled,
                     snoozedUntil: !!snoozedUntil,
-                    authLoading
+                    authLoading,
+                    pendingUpdates: pendingUpdates.current.size
                   });
                 }}
                 className="bg-green-500 text-white px-3 py-1 rounded text-sm hover:bg-green-600"
@@ -1154,6 +1240,8 @@ function App() {
                   dataFetched.current = false;
                   oneSignalInitialized.current = false;
                   initializationInProgress.current = false;
+                  pendingUpdates.current.forEach(timeout => clearTimeout(timeout));
+                  pendingUpdates.current.clear();
                   setNotifications([]);
                   setTopics([]);
                   oneSignalService.reset();
