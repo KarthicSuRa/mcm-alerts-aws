@@ -21,6 +21,11 @@ type CommentFromDB = Database['public']['Tables']['comments']['Row'];
 type TopicFromDB = Database['public']['Tables']['topics']['Row'];
 type SubscriptionFromDB = Database['public']['Tables']['topic_subscriptions']['Row'];
 
+// Extended notification type to include OneSignal ID
+interface ExtendedNotification extends Notification {
+  oneSignalId?: string;
+}
+
 function App() {
   const [theme, setTheme] = useState<Theme>('light');
   const [session, setSession] = useState<Session | null>(null);
@@ -32,9 +37,9 @@ function App() {
   const [snoozedUntil, setSnoozedUntil] = useState<Date | null>(null);
   const [isPushEnabled, setIsPushEnabled] = useState(false);
   const [isPushLoading, setIsPushLoading] = useState(false);
-  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [notifications, setNotifications] = useState<ExtendedNotification[]>([]);
   const [topics, setTopics] = useState<Topic[]>([]);
-  const [toasts, setToasts] = useState<Notification[]>([]);
+  const [toasts, setToasts] = useState<ExtendedNotification[]>([]);
   const [authLoading, setAuthLoading] = useState(true);
 
   const oneSignalService = OneSignalService.getInstance();
@@ -44,7 +49,7 @@ function App() {
   const initializationInProgress = useRef(false);
   const pendingUpdates = useRef<Map<string, NodeJS.Timeout>>(new Map());
 
-  const addToast = useCallback((notification: Notification) => {
+  const addToast = useCallback((notification: ExtendedNotification) => {
     console.log('🍞 Adding toast notification:', notification.title);
     setToasts(prev => [{...notification}, ...prev]);
   }, []);
@@ -140,7 +145,7 @@ function App() {
     }
   }, []);
 
-  const handleNewNotification = useCallback(async (notification: Notification) => {
+  const handleNewNotification = useCallback(async (notification: ExtendedNotification) => {
     console.log('🔔 Handling new notification:', {
       id: notification.id,
       title: notification.title,
@@ -226,7 +231,7 @@ function App() {
           // Generate consistent ID for database storage
           const dbNotificationId = `onesignal-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
           
-          const newNotification: Notification = {
+          const newNotification: ExtendedNotification = {
             id: dbNotificationId, // Use our generated ID for database
             type: 'server_alert',
             title: notification.title || 'New Notification',
@@ -243,7 +248,7 @@ function App() {
           };
           
           setNotifications(prev => {
-            const exists = prev.some(n => n.id === newNotification.id || (n as any).oneSignalId === notification.oneSignalId);
+            const exists = prev.some(n => n.id === newNotification.id || n.oneSignalId === notification.oneSignalId);
             if (exists) {
               console.log('🔄 Notification already exists, skipping');
               return prev;
@@ -312,7 +317,7 @@ function App() {
           ...updates,
           updated_at: new Date().toISOString(),
           comments: n.comments || []
-        } as Notification;
+        } as ExtendedNotification;
       }
       return n;
     }));
@@ -453,7 +458,7 @@ function App() {
           });
           
           console.log('✅ Notifications fetched:', transformedData.length);
-          setNotifications(transformedData as Notification[]);
+          setNotifications(transformedData as ExtendedNotification[]);
         } else {
           console.log('📭 No notifications found');
           setNotifications([]);
@@ -539,13 +544,13 @@ function App() {
             topic_id: payload.new.topic_id
           });
           
-          const newNotification = {...payload.new, comments: [] } as Notification;
+          const newNotification = {...payload.new, comments: [] } as ExtendedNotification;
           
           setNotifications(prev => {
             // Check for duplicates by ID or OneSignal ID
             const exists = prev.some(n => 
               n.id === newNotification.id || 
-              ((n as any).oneSignalId && (newNotification as any).oneSignalId && (n as any).oneSignalId === (newNotification as any).oneSignalId)
+              (n.oneSignalId && newNotification.oneSignalId && n.oneSignalId === newNotification.oneSignalId)
             );
             
             if (exists) {
@@ -583,7 +588,7 @@ function App() {
                   ...payload.new,
                   comments: n.comments || [],
                   updated_at: payload.new.updated_at || new Date().toISOString()
-                } as Notification;
+                } as ExtendedNotification;
               }
               return n;
             }));
@@ -902,7 +907,7 @@ function App() {
           };
         });
         
-        setNotifications(transformedData as Notification[]);
+        setNotifications(transformedData as ExtendedNotification[]);
         console.log('✅ Notifications force refreshed successfully:', transformedData.length);
         
         dataFetched.current = true;
