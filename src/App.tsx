@@ -616,20 +616,31 @@ function App() {
     }
   }, [soundEnabled, snoozedUntil, topics, addToast]);
 
+  // Replace these functions in your App.tsx:
+
   const updateNotification = useCallback(async (notificationId: string, updates: NotificationUpdatePayload) => {
     const { error } = await supabase
       .from('notifications')
       .update(updates)
       .eq('id', notificationId);
-    if(error) console.error("Error updating notification:", error);
+    
+    if (error) {
+      console.error("Error updating notification:", error);
+      throw error; // Re-throw to allow error handling in calling code
+    }
   }, []);
   
   const addComment = useCallback(async (notificationId: string, text: string) => {
-    if(!session) return;
+    if (!session) return;
+    
     const { error } = await supabase
       .from('comments')
       .insert([{ notification_id: notificationId, text, user_id: session.user.id }]);
-    if(error) console.error("Error adding comment:", error);
+    
+    if (error) {
+      console.error("Error adding comment:", error);
+      throw error; // Re-throw to allow error handling in calling code
+    }
   }, [session]);
 
   const handleAddTopic = useCallback(async (name: string, description: string) => {
