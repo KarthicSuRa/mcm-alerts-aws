@@ -246,7 +246,7 @@ function App() {
 
         console.log('Setting up realtime subscriptions...');
 
-        // Notification channel with better error handling
+        // FIXED: Notification channel with better UPDATE handling
         const notificationChannel = supabase
           .channel('notifications-channel', {
             config: {
@@ -260,7 +260,7 @@ function App() {
             table: 'notifications' 
           }, payload => {
             if (!mounted) return;
-            console.log('New notification received:', payload.new);
+            console.log('🔵 New notification received:', payload.new);
             const newNotification = {...payload.new, comments: [] } as Notification;
             setNotifications(prev => [newNotification, ...prev]);
             handleNewNotification(newNotification);
@@ -271,16 +271,38 @@ function App() {
             table: 'notifications' 
           }, payload => {
             if (!mounted) return;
-            console.log('Notification updated:', payload.new);
-            setNotifications(prev => prev.map(n => 
-              n.id === payload.new.id ? {...n, ...payload.new} as Notification : n
-            ));
+            console.log('🟡 Notification UPDATE received:', {
+              id: payload.new.id,
+              oldStatus: payload.old?.status,
+              newStatus: payload.new.status
+            });
+            
+            setNotifications(prev => {
+              const updated = prev.map(n => {
+                if (n.id === payload.new.id) {
+                  console.log('🟢 Updating notification in state:', {
+                    id: n.id,
+                    oldStatus: n.status,
+                    newStatus: payload.new.status
+                  });
+                  
+                  return {
+                    ...n,           // Keep existing data (including comments)
+                    ...payload.new, // Override with new data from database
+                    comments: n.comments || [] // Ensure comments are preserved
+                  } as Notification;
+                }
+                return n;
+              });
+              
+              return updated;
+            });
           })
           .subscribe((status, err) => {
             if (err) {
-              console.error('Notification channel subscription error:', err);
+              console.error('❌ Notification channel subscription error:', err);
             } else {
-              console.log('Notification channel status:', status);
+              console.log('✅ Notification channel status:', status);
             }
           });
 
@@ -616,30 +638,39 @@ function App() {
     }
   }, [soundEnabled, snoozedUntil, topics, addToast]);
 
-  // Replace these functions in your App.tsx:
-
+  // FIXED: Made functions async and added proper error handling
   const updateNotification = useCallback(async (notificationId: string, updates: NotificationUpdatePayload) => {
-    const { error } = await supabase
+    console.log('🔧 Updating notification:', { notificationId, updates });
+    
+    const { error, data } = await supabase
       .from('notifications')
       .update(updates)
-      .eq('id', notificationId);
+      .eq('id', notificationId)
+      .select(); // Add select() to see what was actually updated
     
     if (error) {
-      console.error("Error updating notification:", error);
-      throw error; // Re-throw to allow error handling in calling code
+      console.error("❌ Error updating notification:", error);
+      throw error;
+    } else {
+      console.log('✅ Notification updated successfully:', data);
     }
   }, []);
   
   const addComment = useCallback(async (notificationId: string, text: string) => {
     if (!session) return;
     
-    const { error } = await supabase
+    console.log('💬 Adding comment:', { notificationId, text });
+    
+    const { error, data } = await supabase
       .from('comments')
-      .insert([{ notification_id: notificationId, text, user_id: session.user.id }]);
+      .insert([{ notification_id: notificationId, text, user_id: session.user.id }])
+      .select();
     
     if (error) {
-      console.error("Error adding comment:", error);
-      throw error; // Re-throw to allow error handling in calling code
+      console.error("❌ Error adding comment:", error);
+      throw error;
+    } else {
+      console.log('✅ Comment added successfully:', data);
     }
   }, [session]);
 
