@@ -151,6 +151,84 @@ function App() {
     }
   }, [soundEnabled, snoozedUntil, topics, addToast]);
 
+  // FIXED: updateNotification function with optimistic updates and better error handling
+  const updateNotification = useCallback(async (notificationId: string, updates: NotificationUpdatePayload) => {
+    console.log('🔧 Updating notification:', { notificationId, updates });
+    
+    // Store original notification for potential revert
+    const originalNotification = notifications.find(n => n.id === notificationId);
+    
+    // OPTIMISTIC UPDATE: Update UI immediately for better UX
+    setNotifications(prev => prev.map(n => {
+      if (n.id === notificationId) {
+        console.log('⚡ Optimistic update applied:', { 
+          id: notificationId, 
+          oldStatus: n.status, 
+          newStatus: updates.status 
+        });
+        return {
+          ...n,
+          ...updates,
+          updated_at: new Date().toISOString(),
+          comments: n.comments || []
+        } as Notification;
+      }
+      return n;
+    }));
+    
+    try {
+      // Make the database update
+      const { error, data } = await supabase
+        .from('notifications')
+        .update({
+          ...updates,
+          updated_at: new Date().toISOString() // Ensure updated_at is always set
+        })
+        .eq('id', notificationId)
+        .select()
+        .single();
+      
+      if (error) {
+        console.error("❌ Database update failed, reverting optimistic update:", error);
+        
+        // REVERT OPTIMISTIC UPDATE on error
+        if (originalNotification) {
+          setNotifications(prev => prev.map(n => {
+            if (n.id === notificationId) {
+              return originalNotification;
+            }
+            return n;
+          }));
+        }
+        
+        throw error;
+      }
+      
+      console.log('✅ Database update successful:', data);
+      
+      // The realtime subscription should handle the final state update
+      // But we'll add a backup timeout in case realtime is slow
+      setTimeout(() => {
+        setNotifications(prev => {
+          const current = prev.find(n => n.id === notificationId);
+          if (current && data && current.status !== data.status) {
+            console.log('⏰ Backup update: realtime was slow, updating from database response');
+            return prev.map(n => n.id === notificationId ? {
+              ...n,
+              ...data,
+              comments: n.comments || []
+            } as Notification : n);
+          }
+          return prev;
+        });
+      }, 2000); // 2 second backup
+      
+    } catch (error) {
+      console.error("❌ Failed to update notification:", error);
+      throw error;
+    }
+  }, [notifications]); // Added notifications as dependency for revert functionality
+
   // --- Improved Data Fetching and Realtime Subscriptions ---
   useEffect(() => {
     if (!session || dataFetched.current) return;
@@ -246,11 +324,11 @@ function App() {
 
         console.log('Setting up realtime subscriptions...');
 
-        // FIXED: Notification channel with better UPDATE handling
+        // FIXED: Notification channel with proper UPDATE handling
         const notificationChannel = supabase
           .channel('notifications-channel', {
             config: {
-              broadcast: { self: true }, // CHANGED: Allow self-triggered events
+              broadcast: { self: false }, // CHANGED: Disable self to prevent conflicts with optimistic updates
               presence: { key: session.user.id }
             }
           })
@@ -262,7 +340,15 @@ function App() {
             if (!mounted) return;
             console.log('🔵 New notification received:', payload.new);
             const newNotification = {...payload.new, comments: [] } as Notification;
-            setNotifications(prev => [newNotification, ...prev]);
+            setNotifications(prev => {
+              // Check if notification already exists (prevent duplicates)
+              const exists = prev.some(n => n.id === newNotification.id);
+              if (exists) {
+                console.log('🔄 Notification already exists, skipping INSERT');
+                return prev;
+              }
+              return [newNotification, ...prev];
+            });
             handleNewNotification(newNotification);
           })
           .on<NotificationFromDB>('postgres_changes', { 
@@ -271,46 +357,43 @@ function App() {
             table: 'notifications' 
           }, payload => {
             if (!mounted) return;
-            console.log('🟡 Notification UPDATE received:', {
+            console.log('🟡 Notification UPDATE received via realtime:', {
               id: payload.new.id,
               oldStatus: payload.old?.status,
               newStatus: payload.new.status,
-              fullPayload: payload.new
+              timestamp: new Date().toISOString()
             });
             
             setNotifications(prev => {
               const updated = prev.map(n => {
                 if (n.id === payload.new.id) {
-                  console.log('🟢 Updating notification in state:', {
+                  console.log('🟢 Applying realtime update:', {
                     id: n.id,
                     oldStatus: n.status,
                     newStatus: payload.new.status,
-                    beforeUpdate: n,
-                    afterUpdate: payload.new
+                    wasOptimistic: n.updated_at && payload.new.updated_at && new Date(n.updated_at).getTime() > new Date(payload.new.updated_at).getTime()
                   });
                   
-                  // FIXED: Ensure we merge properly and preserve all fields
-                  const updatedNotification = {
-                    ...n,           // Keep existing data (including comments)
-                    ...payload.new, // Override with new data from database
-                    comments: n.comments || [], // Ensure comments are preserved
-                    // Explicitly ensure critical fields are updated
-                    status: payload.new.status,
+                  return {
+                    ...n,
+                    ...payload.new,
+                    comments: n.comments || [], // Preserve comments
                     updated_at: payload.new.updated_at || new Date().toISOString()
                   } as Notification;
-                  
-                  console.log('🟢 Final updated notification:', updatedNotification);
-                  return updatedNotification;
                 }
                 return n;
               });
               
-              console.log('🔄 State updated, checking if notification exists in new state...');
+              // Verify the update was applied
               const updatedNotification = updated.find(n => n.id === payload.new.id);
               if (updatedNotification) {
-                console.log('✅ Notification found in updated state with status:', updatedNotification.status);
+                console.log('✅ Realtime update applied successfully:', {
+                  id: updatedNotification.id,
+                  status: updatedNotification.status,
+                  updated_at: updatedNotification.updated_at
+                });
               } else {
-                console.log('❌ Notification NOT found in updated state!');
+                console.log('❌ Notification not found for realtime update!');
               }
               
               return updated;
@@ -590,20 +673,78 @@ function App() {
     };
   }, []);
 
-  // DEBUG: Log notifications state changes
+  // DEBUGGING: Add a useEffect to monitor notification status changes
   useEffect(() => {
-    console.log('📊 Notifications state updated. Current notifications:', {
+    const statusCounts = notifications.reduce((acc, n) => {
+      acc[n.status] = (acc[n.status] || 0) + 1;
+      return acc;
+    }, {} as Record<string, number>);
+    
+    console.log('📊 Notification status summary:', {
       total: notifications.length,
-      byStatus: {
-        new: notifications.filter(n => n.status === 'new').length,
-        acknowledged: notifications.filter(n => n.status === 'acknowledged').length,
-        resolved: notifications.filter(n => n.status === 'resolved').length
-      },
-      recentUpdates: notifications
-        .filter(n => n.updated_at && new Date(n.updated_at).getTime() > Date.now() - 10000) // Last 10 seconds
-        .map(n => ({ id: n.id, status: n.status, updated_at: n.updated_at }))
+      counts: statusCounts,
+      recentlyUpdated: notifications
+        .filter(n => n.updated_at && new Date(n.updated_at).getTime() > Date.now() - 5000)
+        .map(n => ({ id: n.id.slice(-8), status: n.status, updated_at: n.updated_at }))
     });
   }, [notifications]);
+
+  // ADDITIONAL FIX: Add a manual refresh mechanism as backup
+  const forceRefreshNotifications = useCallback(async () => {
+    if (!session) return;
+    
+    console.log('🔄 Force refreshing notifications...');
+    
+    try {
+      const { data: notificationsData, error } = await supabase
+        .from('notifications')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error('Error force refreshing notifications:', error);
+        return;
+      }
+
+      if (notificationsData) {
+        // Get comments for all notifications
+        const notificationIds = notificationsData.map(n => n.id);
+        const commentsByNotificationId = new Map<string, CommentFromDB[]>();
+
+        if (notificationIds.length > 0) {
+          const { data: commentsData, error: commentsError } = await supabase
+            .from('comments')
+            .select('*')
+            .in('notification_id', notificationIds);
+
+          if (commentsData && !commentsError) {
+            commentsData.forEach(c => {
+              if (!commentsByNotificationId.has(c.notification_id)) {
+                commentsByNotificationId.set(c.notification_id, []);
+              }
+              commentsByNotificationId.get(c.notification_id)!.push(c);
+            });
+          }
+        }
+
+        const transformedData = notificationsData.map(n => {
+          const comments = commentsByNotificationId.get(n.id) || [];
+          return {
+            ...n,
+            comments: comments.map((c: CommentFromDB) => ({
+              ...c,
+              user_email: c.user_id === session.user.id ? (session.user.email ?? 'Current User') : 'Another User'
+            }))
+          };
+        });
+        
+        setNotifications(transformedData as Notification[]);
+        console.log('✅ Notifications force refreshed successfully');
+      }
+    } catch (error) {
+      console.error('Error in force refresh:', error);
+    }
+  }, [session]);
   
   const handleUnauthedNavigate = useCallback((page: 'landing' | 'login') => {
     setUnauthedPage(page);
@@ -683,47 +824,6 @@ function App() {
       }
     }
   }, [soundEnabled, snoozedUntil, topics, addToast]);
-
-  // FIXED: Made functions async and added proper error handling
-  const updateNotification = useCallback(async (notificationId: string, updates: NotificationUpdatePayload) => {
-    console.log('🔧 Updating notification:', { notificationId, updates });
-    
-    try {
-      // IMPORTANT: Add .select() to get the updated data back
-      const { error, data } = await supabase
-        .from('notifications')
-        .update(updates)
-        .eq('id', notificationId)
-        .select()
-        .single(); // Get the single updated record
-      
-      if (error) {
-        console.error("❌ Error updating notification:", error);
-        throw error;
-      }
-      
-      console.log('✅ Notification updated successfully:', data);
-      
-      // FALLBACK: Update local state immediately if real-time doesn't work
-      // This ensures the UI updates even if real-time subscriptions have issues
-      setNotifications(prev => prev.map(n => {
-        if (n.id === notificationId) {
-          console.log('🔄 Fallback: Updating notification in local state');
-          return {
-            ...n,
-            ...updates,
-            // Preserve comments and other data that might not be in updates
-            comments: n.comments || []
-          } as Notification;
-        }
-        return n;
-      }));
-      
-    } catch (error) {
-      console.error("❌ Failed to update notification:", error);
-      throw error; // Re-throw to let the calling component handle it
-    }
-  }, []);
 
   const addComment = useCallback(async (notificationId: string, text: string) => {
     if (!session) {
@@ -908,8 +1008,21 @@ function App() {
             onSubscribeToPush={subscribeToPush}
             onUnsubscribeFromPush={unsubscribeFromPush}
           />
+
+          {/* Debug Force Refresh Button - Remove in production */}
+          {process.env.NODE_ENV === 'development' && (
+            <button
+              onClick={forceRefreshNotifications}
+              className="fixed bottom-4 right-4 bg-blue-500 text-white px-3 py-1 rounded text-sm z-50 hover:bg-blue-600"
+              title="Force refresh notifications (dev only)"
+            >
+              🔄 Force Refresh
+            </button>
+          )}
         </ErrorBoundary>
       </div>
+      
+      {/* Toast Notifications */}
       <div aria-live="assertive" className="fixed inset-0 flex items-end px-4 py-6 pointer-events-none sm:p-6 sm:items-start z-[100]">
         <div className="w-full flex flex-col items-center space-y-4 sm:items-end">
           {toasts.map(toast => (
