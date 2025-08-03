@@ -46,6 +46,7 @@ function App() {
   const oneSignalInitialized = useRef(false);
   const dataFetched = useRef(false);
   const realtimeSubscriptions = useRef<Map<string, any>>(new Map());
+  const initializationInProgress = useRef(false);
 
   const addToast = useCallback((notification: Notification) => {
     console.log('🍞 Adding toast notification:', notification.title);
@@ -68,9 +69,14 @@ function App() {
     let mounted = true;
     
     const initAuth = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (mounted) {
-        setSession(session);
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (mounted) {
+          setSession(session);
+          console.log('🔐 Auth session initialized:', !!session);
+        }
+      } catch (error) {
+        console.error('❌ Error getting auth session:', error);
       }
     };
 
@@ -78,12 +84,21 @@ function App() {
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       if (mounted) {
+        console.log('🔐 Auth state changed:', !!session);
         setSession(session);
-        // Reset data fetch flag when auth state changes
-        dataFetched.current = false;
         
-        // Clear existing subscriptions when auth changes
+        // Reset flags when auth state changes
         if (!session) {
+          dataFetched.current = false;
+          oneSignalInitialized.current = false;
+          initializationInProgress.current = false;
+          
+          // Clear data
+          setNotifications([]);
+          setTopics([]);
+          setToasts([]);
+          
+          // Clear existing subscriptions when auth changes
           console.log('🧹 Clearing realtime subscriptions due to auth change');
           realtimeSubscriptions.current.forEach(channel => {
             try {
@@ -93,6 +108,9 @@ function App() {
             }
           });
           realtimeSubscriptions.current.clear();
+        } else {
+          // Reset data fetch flag when user logs in
+          dataFetched.current = false;
         }
       }
     });
@@ -105,15 +123,18 @@ function App() {
 
   // --- OneSignal Initialization (FIXED: Prevent multiple inits) ---
   useEffect(() => {
-    if (oneSignalInitialized.current) return;
+    if (!session || oneSignalInitialized.current || initializationInProgress.current) return;
     
     const initOneSignal = async () => {
       try {
-        oneSignalInitialized.current = true;
+        initializationInProgress.current = true;
+        console.log('🔔 Initializing OneSignal...');
+        
         await oneSignalService.initialize();
         
         // Check if user is already subscribed
         const isSubscribed = await oneSignalService.isSubscribed();
+        console.log('🔔 OneSignal subscription status:', isSubscribed);
         setIsPushEnabled(isSubscribed);
         
         // Set up subscription change listener (only once)
@@ -127,29 +148,38 @@ function App() {
           console.log('🔔 OneSignal notification clicked:', event);
         });
 
-        // If user is logged in and subscribed, save player ID to database
-        if (session && isSubscribed) {
-          await oneSignalService.savePlayerIdToDatabase(session.user.id);
+        // If user is subscribed, save player ID to database
+        if (isSubscribed) {
+          try {
+            await oneSignalService.savePlayerIdToDatabase(session.user.id);
+            console.log('🔔 Player ID saved to database');
+          } catch (error) {
+            console.warn('⚠️ Failed to save player ID to database:', error);
+          }
         }
+        
+        oneSignalInitialized.current = true;
+        console.log('✅ OneSignal initialization completed');
       } catch (error) {
-        console.error('Failed to initialize OneSignal:', error);
-        oneSignalInitialized.current = false; // Allow retry on error
+        console.error('❌ Failed to initialize OneSignal:', error);
+        oneSignalInitialized.current = false;
       } finally {
         setIsPushLoading(false);
+        initializationInProgress.current = false;
       }
     };
 
     initOneSignal();
-  }, [session]); // Added session dependency to handle player ID saving
+  }, [session]);
 
-  // --- Handle New Notifications (FIXED: Better sound and toast handling) ---
+  // --- FIXED: Handle New Notifications with better logic ---
   const handleNewNotification = useCallback(async (notification: Notification) => {
     console.log('🔔 Handling new notification:', {
       id: notification.id,
       title: notification.title,
       severity: notification.severity,
       topic_id: notification.topic_id,
-      snoozedUntil,
+      snoozedUntil: !!snoozedUntil,
       soundEnabled
     });
 
@@ -159,21 +189,33 @@ function App() {
       return;
     }
 
-    // Check if user is subscribed to this topic
-    const notificationTopic = topics.find(t => t.id === notification.topic_id);
-    if (notification.topic_id && (!notificationTopic || !notificationTopic.subscribed)) {
-      console.log("📵 User not subscribed to this topic. Notification sound/toast blocked.", {
-        topicId: notification.topic_id,
-        topicFound: !!notificationTopic,
-        subscribed: notificationTopic?.subscribed
-      });
-      return;
+    // FIXED: Better topic filtering logic
+    if (notification.topic_id) {
+      // Wait a bit for topics to be loaded if they're empty
+      if (topics.length === 0) {
+        console.log("📂 Topics not loaded yet, waiting...");
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+      
+      const notificationTopic = topics.find(t => t.id === notification.topic_id);
+      if (notificationTopic && !notificationTopic.subscribed) {
+        console.log("📵 User not subscribed to this topic. Notification sound/toast blocked.", {
+          topicId: notification.topic_id,
+          topicName: notificationTopic.name,
+          subscribed: notificationTopic.subscribed
+        });
+        return;
+      } else if (!notificationTopic) {
+        console.log("📂 Topic not found, but allowing notification (might be new topic)");
+      }
+    } else {
+      console.log("📢 General notification (no topic) - showing to all users");
     }
 
     // Show toast notification with a unique ID for tracking
     const toastNotification = {
       ...notification,
-      id: `toast-${notification.id}-${Date.now()}` // Ensure unique toast ID
+      id: `toast-${notification.id}-${Date.now()}`
     };
     addToast(toastNotification);
 
@@ -182,7 +224,7 @@ function App() {
       try {
         console.log('🔊 Playing notification sound');
         const audio = new Audio('/alert.wav');
-        audio.volume = 0.7; // Slightly reduce volume
+        audio.volume = 0.7;
         await audio.play();
         console.log('✅ Notification sound played successfully');
       } catch (error) {
@@ -256,26 +298,32 @@ function App() {
 
   // --- FIXED: Enhanced Data Fetching and Realtime Subscriptions ---
   useEffect(() => {
-    if (!session || dataFetched.current) return;
+    if (!session) {
+      // Reset everything when no session
+      setNotifications([]);
+      setTopics([]);
+      dataFetched.current = false;
+      return;
+    }
+    
+    if (dataFetched.current) return;
     
     let mounted = true;
     
     const fetchInitialData = async () => {
       try {
-        console.log('📊 Fetching initial data...');
-        dataFetched.current = true;
+        console.log('📊 Fetching initial data for user:', session.user.id);
         
         // Fetch notifications with better error handling
         const { data: notificationsData, error: notificationsError } = await supabase
           .from('notifications')
           .select('*')
           .order('created_at', { ascending: false })
-          .limit(100); // Limit to prevent excessive data
+          .limit(100);
 
         if (notificationsError) {
           console.error('❌ Error fetching notifications:', notificationsError);
-          dataFetched.current = false; // Allow retry
-          return;
+          throw notificationsError;
         }
 
         if (notificationsData && mounted) {
@@ -315,6 +363,9 @@ function App() {
           
           console.log('✅ Notifications fetched:', transformedData.length);
           setNotifications(transformedData as Notification[]);
+        } else {
+          console.log('📭 No notifications found');
+          setNotifications([]);
         }
 
         // Fetch topics and user subscriptions
@@ -323,9 +374,14 @@ function App() {
           supabase.from('topic_subscriptions').select('*').eq('user_id', session.user.id)
         ]);
 
-        if (topicsResult.error || subscriptionsResult.error) {
-          console.error('❌ Error fetching topics/subscriptions:', topicsResult.error || subscriptionsResult.error);
-          return;
+        if (topicsResult.error) {
+          console.error('❌ Error fetching topics:', topicsResult.error);
+          throw topicsResult.error;
+        }
+
+        if (subscriptionsResult.error) {
+          console.error('❌ Error fetching subscriptions:', subscriptionsResult.error);
+          throw subscriptionsResult.error;
         }
 
         if (topicsResult.data && subscriptionsResult.data && mounted) {
@@ -335,18 +391,35 @@ function App() {
             subscribed: subscribedTopicIds.has(topic.id),
             subscription_id: subscriptionsResult.data.find(s => s.topic_id === topic.id)?.id,
           }));
-          console.log('✅ Topics fetched:', mergedTopics.length);
+          console.log('✅ Topics fetched:', mergedTopics.length, 'subscriptions:', subscribedTopicIds.size);
           setTopics(mergedTopics);
         }
+        
+        // Only mark as fetched if everything succeeded
+        dataFetched.current = true;
+        console.log('✅ Initial data fetch completed successfully');
 
       } catch (error) {
         console.error('❌ Error in fetchInitialData:', error);
-        dataFetched.current = false; // Allow retry
+        // Don't set dataFetched to true on error to allow retry
+        dataFetched.current = false;
+        
+        // Set empty state on error
+        if (mounted) {
+          setNotifications([]);
+          setTopics([]);
+        }
+        
+        // Show user-friendly error
+        console.error('Failed to load data. Please refresh the page.');
       }
     };
 
     const setupRealtimeSubscriptions = () => {
-      if (!mounted) return;
+      if (!mounted || !dataFetched.current) {
+        console.log('⏸️ Skipping realtime setup - not ready');
+        return;
+      }
 
       console.log('🔗 Setting up realtime subscriptions...');
 
@@ -360,12 +433,12 @@ function App() {
       });
       realtimeSubscriptions.current.clear();
 
-      // FIXED: Notification channel with better INSERT and UPDATE handling
+      // FIXED: Notification channel - Listen to ALL notifications globally
       const notificationChannel = supabase
-        .channel(`notifications-${session.user.id}`, {
+        .channel('notifications-global', {
           config: {
             broadcast: { self: false },
-            presence: { key: session.user.id }
+            presence: { key: `user-${session.user.id}` }
           }
         })
         .on<NotificationFromDB>('postgres_changes', { 
@@ -375,12 +448,16 @@ function App() {
         }, async (payload) => {
           if (!mounted) return;
           
-          console.log('🔵 New notification received via realtime:', payload.new);
+          console.log('🔵 New notification received via realtime:', {
+            id: payload.new.id,
+            title: payload.new.title,
+            topic_id: payload.new.topic_id
+          });
+          
           const newNotification = {...payload.new, comments: [] } as Notification;
           
-          // Add to notifications list
+          // Add to notifications list immediately
           setNotifications(prev => {
-            // Check if notification already exists (prevent duplicates)
             const exists = prev.some(n => n.id === newNotification.id);
             if (exists) {
               console.log('🔄 Notification already exists, skipping INSERT');
@@ -390,10 +467,10 @@ function App() {
             return [newNotification, ...prev];
           });
           
-          // Trigger notification handlers (sound/toast) with delay to ensure state is updated
+          // Trigger notification handlers (sound/toast) with delay
           setTimeout(() => {
             handleNewNotification(newNotification);
-          }, 100);
+          }, 200);
         })
         .on<NotificationFromDB>('postgres_changes', { 
           event: 'UPDATE', 
@@ -404,40 +481,21 @@ function App() {
           console.log('🟡 Notification UPDATE received via realtime:', {
             id: payload.new.id,
             oldStatus: payload.old?.status,
-            newStatus: payload.new.status,
-            timestamp: new Date().toISOString()
+            newStatus: payload.new.status
           });
           
-          setNotifications(prev => {
-            const updated = prev.map(n => {
-              if (n.id === payload.new.id) {
-                console.log('🟢 Applying realtime update:', {
-                  id: n.id,
-                  oldStatus: n.status,
-                  newStatus: payload.new.status
-                });
-                
-                return {
-                  ...n,
-                  ...payload.new,
-                  comments: n.comments || [], // Preserve comments
-                  updated_at: payload.new.updated_at || new Date().toISOString()
-                } as Notification;
-              }
-              return n;
-            });
-            
-            // Verify the update was applied
-            const updatedNotification = updated.find(n => n.id === payload.new.id);
-            if (updatedNotification) {
-              console.log('✅ Realtime update applied successfully:', {
-                id: updatedNotification.id,
-                status: updatedNotification.status
-              });
+          setNotifications(prev => prev.map(n => {
+            if (n.id === payload.new.id) {
+              console.log('🟢 Applying realtime update to notification:', n.id);
+              return {
+                ...n,
+                ...payload.new,
+                comments: n.comments || [],
+                updated_at: payload.new.updated_at || new Date().toISOString()
+              } as Notification;
             }
-            
-            return updated;
-          });
+            return n;
+          }));
         })
         .subscribe((status, err) => {
           if (err) {
@@ -563,20 +621,24 @@ function App() {
       console.log('✅ All realtime subscriptions set up successfully');
     };
 
-    // Execute both functions with proper sequencing
-    fetchInitialData().then(() => {
-      if (mounted) {
-        // Small delay to ensure data is properly set before setting up subscriptions
-        setTimeout(() => {
-          if (mounted) {
-            setupRealtimeSubscriptions();
-          }
-        }, 500);
-      }
-    });
+    // Execute both functions with proper sequencing and error handling
+    fetchInitialData()
+      .then(() => {
+        if (mounted && dataFetched.current) {
+          // Small delay to ensure data is properly set before setting up subscriptions
+          setTimeout(() => {
+            if (mounted) {
+              setupRealtimeSubscriptions();
+            }
+          }, 1000);
+        }
+      })
+      .catch(error => {
+        console.error('❌ Failed to fetch initial data:', error);
+      });
 
     return () => {
-      console.log('🧹 Cleaning up realtime subscriptions...');
+      console.log('🧹 Cleaning up data fetching effect...');
       mounted = false;
       
       // Clean up channels with proper error handling
@@ -710,11 +772,14 @@ function App() {
     }
   }, [notifications]);
 
-  // Force refresh mechanism as backup
+  // FIXED: Force refresh mechanism with better error handling
   const forceRefreshNotifications = useCallback(async () => {
     if (!session) return;
     
     console.log('🔄 Force refreshing notifications...');
+    
+    // Reset the flag to allow re-fetching
+    dataFetched.current = false;
     
     try {
       const { data: notificationsData, error } = await supabase
@@ -725,6 +790,7 @@ function App() {
 
       if (error) {
         console.error('Error force refreshing notifications:', error);
+        alert(`Database error: ${error.message}`);
         return;
       }
 
@@ -760,10 +826,14 @@ function App() {
         });
         
         setNotifications(transformedData as Notification[]);
-        console.log('✅ Notifications force refreshed successfully');
+        console.log('✅ Notifications force refreshed successfully:', transformedData.length);
+        
+        // Mark as fetched again
+        dataFetched.current = true;
       }
     } catch (error) {
       console.error('Error in force refresh:', error);
+      alert('Failed to refresh notifications. Please try again.');
     }
   }, [session]);
   
@@ -786,6 +856,7 @@ function App() {
     
     dataFetched.current = false;
     oneSignalInitialized.current = false;
+    initializationInProgress.current = false;
     
     await supabase.auth.signOut();
     setUnauthedPage('landing');
@@ -814,8 +885,8 @@ function App() {
       topicId = randomTopic.id;
       topicName = ` (${randomTopic.name})`;
     } else {
-      alert("Please subscribe to at least one topic to send a test alert.");
-      return;
+      // Allow test alerts without topic subscription for testing
+      console.log("No subscribed topics, sending general alert");
     }
 
     console.log('🧪 Sending test alert...');
@@ -897,18 +968,29 @@ function App() {
   }, [session]);
 
   const handleAddTopic = useCallback(async (name: string, description: string) => {
-    const { error } = await supabase.from('topics').insert([{ name, description }]);
-    if(error) console.error("Error adding topic:", error);
+    try {
+      const { error } = await supabase.from('topics').insert([{ name, description }]);
+      if (error) {
+        console.error("Error adding topic:", error);
+        alert(`Failed to add topic: ${error.message}`);
+      } else {
+        console.log('✅ Topic added successfully');
+      }
+    } catch (error) {
+      console.error("Error adding topic:", error);
+      alert('Failed to add topic. Please try again.');
+    }
   }, []);
   
   const handleToggleSubscription = useCallback(async (topic: Topic) => {
-    if(!session) return;
+    if (!session) return;
 
     try {
-      if(topic.subscribed && topic.subscription_id) {
+      if (topic.subscribed && topic.subscription_id) {
         const { error } = await supabase.from('topic_subscriptions').delete().eq('id', topic.subscription_id);
-        if(error) {
+        if (error) {
           console.error("Error unsubscribing:", error);
+          alert(`Failed to unsubscribe: ${error.message}`);
           return;
         } 
         
@@ -922,8 +1004,9 @@ function App() {
         }
       } else {
         const { error } = await supabase.from('topic_subscriptions').insert([{ user_id: session.user.id, topic_id: topic.id }]);
-        if(error) {
+        if (error) {
           console.error("Error subscribing:", error);
+          alert(`Failed to subscribe: ${error.message}`);
           return;
         }
         
@@ -1028,15 +1111,52 @@ function App() {
             onUnsubscribeFromPush={unsubscribeFromPush}
           />
 
-          {/* Debug Force Refresh Button - Remove in production */}
+          {/* Debug buttons - Remove in production */}
           {process.env.NODE_ENV === 'development' && (
-            <button
-              onClick={forceRefreshNotifications}
-              className="fixed bottom-4 right-4 bg-blue-500 text-white px-3 py-1 rounded text-sm z-50 hover:bg-blue-600"
-              title="Force refresh notifications (dev only)"
-            >
-              🔄 Force Refresh
-            </button>
+            <div className="fixed top-4 right-4 flex gap-2 z-50">
+              <button
+                onClick={forceRefreshNotifications}
+                className="bg-blue-500 text-white px-3 py-1 rounded text-sm hover:bg-blue-600"
+                title="Force refresh notifications"
+              >
+                🔄 Refresh
+              </button>
+              <button
+                onClick={() => {
+                  console.log('🐛 Current app state:', {
+                    notifications: notifications.length,
+                    topics: topics.length,
+                    session: !!session,
+                    dataFetched: dataFetched.current,
+                    oneSignalInitialized: oneSignalInitialized.current,
+                    subscriptions: realtimeSubscriptions.current.size,
+                    subscriptionNames: Array.from(realtimeSubscriptions.current.keys()),
+                    isPushEnabled,
+                    soundEnabled,
+                    snoozedUntil: !!snoozedUntil
+                  });
+                }}
+                className="bg-green-500 text-white px-3 py-1 rounded text-sm hover:bg-green-600"
+                title="Log current state to console"
+              >
+                🐛 Debug
+              </button>
+              <button
+                onClick={() => {
+                  // Reset everything for testing
+                  dataFetched.current = false;
+                  oneSignalInitialized.current = false;
+                  initializationInProgress.current = false;
+                  setNotifications([]);
+                  setTopics([]);
+                  console.log('🔄 App state reset for testing');
+                }}
+                className="bg-red-500 text-white px-3 py-1 rounded text-sm hover:bg-red-600"
+                title="Reset app state for testing"
+              >
+                🔄 Reset
+              </button>
+            </div>
           )}
         </ErrorBoundary>
       </div>
