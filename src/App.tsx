@@ -559,7 +559,7 @@ function App() {
       topic_id: topicId,
     };
     
-    const { error } = await supabase.functions.invoke('create-notification', {
+    const { error } = await supabase.functions.invoke('hyper-worker', {
       body: newAlert,
     });
     
