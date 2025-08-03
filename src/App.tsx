@@ -442,31 +442,72 @@ function App() {
     };
   }, [session, handleNewNotification]);
 
-  // --- OneSignal Push Subscription Management (FIXED: Better error handling) ---
+  // --- Enhanced OneSignal Push Subscription Management (FIXED: Better error handling) ---
   const subscribeToPush = useCallback(async () => {
     if (!session) return;
     setIsPushLoading(true);
 
     try {
+      console.log('🔔 Starting push subscription process...');
+      
+      // First subscribe to OneSignal
       const playerId = await oneSignalService.subscribe();
-      if (playerId) {
-        await oneSignalService.savePlayerIdToDatabase(session.user.id);
+      if (!playerId) {
+        throw new Error('Failed to get player ID from OneSignal');
+      }
+      
+      console.log('🔔 OneSignal subscription successful, player ID:', playerId);
+      
+      // Save player ID to database
+      await oneSignalService.savePlayerIdToDatabase(session.user.id);
+      console.log('🔔 Player ID saved to database');
+      
+      // Wait a bit more before setting tags to ensure player is fully registered
+      console.log('🔔 Waiting for player registration to complete...');
+      await new Promise(resolve => setTimeout(resolve, 3000));
+      
+      // Set user tags based on subscribed topics (with better error handling)
+      const subscribedTopics = topics.filter(t => t.subscribed);
+      if (subscribedTopics.length > 0) {
+        console.log('🔔 Setting tags for subscribed topics:', subscribedTopics.map(t => t.name));
         
-        // Set user tags based on subscribed topics
-        const subscribedTopics = topics.filter(t => t.subscribed);
-        if (subscribedTopics.length > 0) {
+        try {
           const tags: Record<string, string> = {};
           subscribedTopics.forEach(topic => {
-            tags[`topic_${topic.id}`] = 'true';
+            // Use simpler tag format
+            tags[`topic_${topic.id}`] = '1';
           });
+          
+          console.log('🔔 Tags to set:', tags);
           await oneSignalService.setUserTags(tags);
+          console.log('🔔 Tags set successfully');
+        } catch (tagError) {
+          console.error('🔔 Failed to set tags (non-critical):', tagError);
+          // Don't fail the whole subscription process for tag errors
         }
-        
-        setIsPushEnabled(true);
       }
+      
+      setIsPushEnabled(true);
+      console.log('🔔 Push notifications enabled successfully');
+      
     } catch (error) {
-      console.error('Failed to subscribe to push notifications:', error);
-      alert('Failed to enable push notifications. Please try again.');
+      console.error('🔔 Failed to subscribe to push notifications:', error);
+      
+      // Provide more specific error messages
+      let errorMessage = 'Failed to enable push notifications. ';
+      if (error instanceof Error) {
+        if (error.message.includes('permission')) {
+          errorMessage += 'Please allow notifications in your browser.';
+        } else if (error.message.includes('player ID')) {
+          errorMessage += 'OneSignal registration failed. Please try again.';
+        } else if (error.message.includes('not supported')) {
+          errorMessage += 'Your browser does not support push notifications.';
+        } else {
+          errorMessage += 'Please try again or check your browser settings.';
+        }
+      }
+      
+      alert(errorMessage);
     } finally {
       setIsPushLoading(false);
     }
@@ -596,39 +637,49 @@ function App() {
     if(error) console.error("Error adding topic:", error);
   }, []);
   
+  // Enhanced topic subscription handler to be more robust
   const handleToggleSubscription = useCallback(async (topic: Topic) => {
     if(!session) return;
 
-    if(topic.subscribed && topic.subscription_id) {
-      // Unsubscribe
-      const { error } = await supabase.from('topic_subscriptions').delete().eq('id', topic.subscription_id);
-      if(error) {
-        console.error("Error unsubscribing:", error);
-      } else {
-        // Remove OneSignal tag
+    try {
+      if(topic.subscribed && topic.subscription_id) {
+        // Unsubscribe
+        const { error } = await supabase.from('topic_subscriptions').delete().eq('id', topic.subscription_id);
+        if(error) {
+          console.error("Error unsubscribing:", error);
+          return;
+        } 
+        
+        // Remove OneSignal tag (non-blocking)
         if (isPushEnabled) {
           try {
             await oneSignalService.removeUserTags([`topic_${topic.id}`]);
+            console.log(`Removed OneSignal tag for topic: ${topic.name}`);
           } catch (error) {
-            console.error('Error removing OneSignal tag:', error);
+            console.warn('Error removing OneSignal tag (non-critical):', error);
           }
         }
-      }
-    } else {
-      // Subscribe
-      const { error } = await supabase.from('topic_subscriptions').insert([{ user_id: session.user.id, topic_id: topic.id }]);
-      if(error) {
-        console.error("Error subscribing:", error);
       } else {
-        // Add OneSignal tag
+        // Subscribe
+        const { error } = await supabase.from('topic_subscriptions').insert([{ user_id: session.user.id, topic_id: topic.id }]);
+        if(error) {
+          console.error("Error subscribing:", error);
+          return;
+        }
+        
+        // Add OneSignal tag (non-blocking)
         if (isPushEnabled) {
           try {
-            await oneSignalService.setUserTags({ [`topic_${topic.id}`]: 'true' });
+            await oneSignalService.setUserTags({ [`topic_${topic.id}`]: '1' });
+            console.log(`Added OneSignal tag for topic: ${topic.name}`);
           } catch (error) {
-            console.error('Error setting OneSignal tag:', error);
+            console.warn('Error setting OneSignal tag (non-critical):', error);
           }
         }
       }
+    } catch (error) {
+      console.error('Error toggling subscription:', error);
+      alert('Failed to update subscription. Please try again.');
     }
   }, [session, isPushEnabled]);
 
