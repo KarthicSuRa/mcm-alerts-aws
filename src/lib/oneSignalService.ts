@@ -299,7 +299,7 @@ export class OneSignalService {
     }
   }
 
-  // Enhanced subscription method
+  // Enhanced subscription method with better tag handling
   async subscribe(): Promise<string | null> {
     if (!this.initialized) {
       await this.initialize();
@@ -336,24 +336,24 @@ export class OneSignalService {
         throw new Error('OneSignal subscription API not available');
       }
       
-      // Wait for subscription to be processed
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      
-      // Get the player ID with retries
+      // Wait for subscription to be processed with retries
+      console.log('Waiting for subscription to be processed...');
       let playerId = null;
       let attempts = 0;
-      while (!playerId && attempts < 5) {
+      const maxAttempts = 10;
+      
+      while (!playerId && attempts < maxAttempts) {
+        await new Promise(resolve => setTimeout(resolve, 1000));
         playerId = await this.getPlayerId();
-        if (!playerId) {
-          await new Promise(resolve => setTimeout(resolve, 1000));
-          attempts++;
-        }
+        attempts++;
+        console.log(`Attempt ${attempts}: Player ID = ${playerId}`);
       }
       
       if (!playerId) {
         throw new Error('Failed to get player ID after subscription');
       }
       
+      console.log('Successfully subscribed with player ID:', playerId);
       return playerId;
     } catch (error) {
       console.error('Failed to subscribe to notifications:', error);
@@ -385,27 +385,132 @@ export class OneSignalService {
     }
   }
 
-  // Enhanced tag management
+  // Add tag validation method
+  private validateTags(tags: Record<string, string>): Record<string, string> {
+    const validatedTags: Record<string, string> = {};
+    
+    for (const [key, value] of Object.entries(tags)) {
+      // Validate key
+      if (!key || typeof key !== 'string') {
+        console.warn(`Invalid tag key: ${key}`);
+        continue;
+      }
+      
+      if (key.length > 128) {
+        console.warn(`Tag key too long (max 128 chars): ${key}`);
+        continue;
+      }
+      
+      // Remove special characters from key
+      const cleanKey = key.replace(/[^a-zA-Z0-9_-]/g, '_');
+      if (cleanKey !== key) {
+        console.warn(`Cleaned tag key from "${key}" to "${cleanKey}"`);
+      }
+      
+      // Validate value
+      if (value === null || value === undefined) {
+        console.warn(`Invalid tag value for key ${key}: ${value}`);
+        continue;
+      }
+      
+      const stringValue = String(value);
+      if (stringValue.length > 255) {
+        console.warn(`Tag value too long (max 255 chars) for key ${key}`);
+        continue;
+      }
+      
+      validatedTags[cleanKey] = stringValue;
+    }
+    
+    return validatedTags;
+  }
+
+  // Enhanced tag management with better error handling and validation
   async setUserTags(tags: Record<string, string>): Promise<void> {
     if (!this.initialized) {
       await this.initialize();
     }
 
+    // Validate tags before sending
+    const validatedTags = this.validateTags(tags);
+    if (Object.keys(validatedTags).length === 0) {
+      console.warn('No valid tags to set');
+      return;
+    }
+
+    console.log('Attempting to set tags:', validatedTags);
+
     try {
-      // Try new API first
+      // Check if user is subscribed first
+      const isSubscribed = await this.isSubscribed();
+      if (!isSubscribed) {
+        throw new Error('User is not subscribed to push notifications');
+      }
+
+      // Get player ID to ensure it exists
+      const playerId = await this.getPlayerId();
+      if (!playerId) {
+        throw new Error('No player ID available');
+      }
+
+      console.log('Setting tags for player ID:', playerId);
+
+      // Try new API first with better error handling
       if (window.OneSignal?.User?.addTags) {
-        await window.OneSignal.User.addTags(tags);
+        try {
+          console.log('Using new OneSignal API for tags');
+          const result = await window.OneSignal.User.addTags(validatedTags);
+          console.log('New API result:', result);
+          
+          // Check if the result indicates success
+          if (result && typeof result === 'object' && 'success' in result && !result.success) {
+            throw new Error(`New API failed: ${JSON.stringify(result)}`);
+          }
+        } catch (newApiError) {
+          console.warn('New API failed, trying legacy:', newApiError);
+          
+          // Fallback to legacy API
+          if (window.OneSignal?.sendTags) {
+            console.log('Using legacy OneSignal API for tags');
+            const legacyResult = await new Promise((resolve, reject) => {
+              window.OneSignal.sendTags(validatedTags, (result: any) => {
+                console.log('Legacy API callback result:', result);
+                if (result && result.success === false) {
+                  reject(new Error(`Legacy API failed: ${JSON.stringify(result)}`));
+                } else {
+                  resolve(result);
+                }
+              });
+            });
+            console.log('Legacy API result:', legacyResult);
+          } else {
+            throw new Error('Neither new nor legacy OneSignal tags API is available');
+          }
+        }
       } else if (window.OneSignal?.sendTags) {
-        // Try legacy API
-        await window.OneSignal.sendTags(tags);
+        // Direct legacy API usage
+        console.log('Using legacy OneSignal API for tags (direct)');
+        const legacyResult = await new Promise((resolve, reject) => {
+          window.OneSignal.sendTags(validatedTags, (result: any) => {
+            console.log('Legacy API callback result:', result);
+            if (result && result.success === false) {
+              reject(new Error(`Legacy API failed: ${JSON.stringify(result)}`));
+            } else {
+              resolve(result);
+            }
+          });
+        });
+        console.log('Legacy API result:', legacyResult);
       } else {
         throw new Error('OneSignal tags API not available');
       }
       
-      console.log('User tags set successfully:', tags);
+      console.log('User tags set successfully:', validatedTags);
     } catch (error) {
       console.error('Failed to set user tags:', error);
-      throw error;
+      
+      // Don't throw the error, just log it to prevent blocking the subscription flow
+      // throw error;
     }
   }
 
@@ -428,7 +533,7 @@ export class OneSignalService {
       console.log('User tags removed successfully:', tagKeys);
     } catch (error) {
       console.error('Failed to remove user tags:', error);
-      throw error;
+      // Don't throw the error for tag operations
     }
   }
 
