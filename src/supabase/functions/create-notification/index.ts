@@ -9,7 +9,7 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-console.log("Create-notification function booting up!");
+console.log("hyper-worker function booting up!");
 
 Deno.serve(async (req: Request) => {
   // Handle CORS preflight requests.
