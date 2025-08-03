@@ -58,34 +58,57 @@ export const RecentNotifications: React.FC<RecentNotificationsProps> = ({ notifi
         return notifs.sort((a,b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
     }, [notifications, severityFilter, timeFilter, searchTerm, topics]);
 
-    // SIMPLIFIED: Just update status, no automatic comment
+    // IMPROVED: Better error handling and user feedback
     const handleQuickAcknowledge = async (e: React.MouseEvent, notification: Notification) => {
         e.stopPropagation();
         
         // Prevent multiple clicks
-        if (processingIds.has(notification.id)) return;
+        if (processingIds.has(notification.id)) {
+            console.log('Already processing notification:', notification.id);
+            return;
+        }
+        
+        // Check if already acknowledged
+        if (notification.status === 'acknowledged') {
+            console.log('Notification already acknowledged:', notification.id);
+            return;
+        }
         
         setProcessingIds(prev => new Set([...prev, notification.id]));
         
         try {
-            console.log('🔧 Quick acknowledging notification:', notification.id);
+            console.log('🔧 Quick acknowledging notification:', {
+                id: notification.id,
+                currentStatus: notification.status,
+                targetStatus: 'acknowledged'
+            });
             
-            // Only update the notification status - no comment
-            await onUpdateNotification(notification.id, { status: 'acknowledged' });
-            console.log('✅ Notification status updated successfully');
+            // Update with explicit timestamp
+            await onUpdateNotification(notification.id, { 
+                status: 'acknowledged',
+                updated_at: new Date().toISOString()
+            });
+            
+            console.log('✅ Notification acknowledgment request sent successfully');
+            
+            // Give user immediate feedback
+            const successEvent = new CustomEvent('notification-updated', {
+                detail: { id: notification.id, status: 'acknowledged' }
+            });
+            window.dispatchEvent(successEvent);
             
         } catch (error) {
             console.error('❌ Error acknowledging notification:', error);
-            alert('Failed to acknowledge notification. Please try again.');
+            alert(`Failed to acknowledge notification: ${error instanceof Error ? error.message : 'Unknown error'}`);
         } finally {
-            // Remove from processing after a delay to prevent rapid clicks
+            // Keep processing state for longer to prevent rapid clicking
             setTimeout(() => {
                 setProcessingIds(prev => {
                     const newSet = new Set(prev);
                     newSet.delete(notification.id);
                     return newSet;
                 });
-            }, 1500); // Increased delay to ensure real-time update has time to process
+            }, 2000); // Increased to 2 seconds
         }
     };
 
@@ -93,29 +116,51 @@ export const RecentNotifications: React.FC<RecentNotificationsProps> = ({ notifi
         e.stopPropagation();
         
         // Prevent multiple clicks
-        if (processingIds.has(notification.id)) return;
+        if (processingIds.has(notification.id)) {
+            console.log('Already processing notification:', notification.id);
+            return;
+        }
+        
+        // Check if already resolved
+        if (notification.status === 'resolved') {
+            console.log('Notification already resolved:', notification.id);
+            return;
+        }
         
         setProcessingIds(prev => new Set([...prev, notification.id]));
         
         try {
-            console.log('🔧 Quick resolving notification:', notification.id);
+            console.log('🔧 Quick resolving notification:', {
+                id: notification.id,
+                currentStatus: notification.status,
+                targetStatus: 'resolved'
+            });
             
-            // Only update the notification status - no comment
-            await onUpdateNotification(notification.id, { status: 'resolved' });
-            console.log('✅ Notification resolved successfully');
+            // Update with explicit timestamp
+            await onUpdateNotification(notification.id, { 
+                status: 'resolved',
+                updated_at: new Date().toISOString()
+            });
+            
+            console.log('✅ Notification resolution request sent successfully');
+            
+            // Give user immediate feedback
+            const successEvent = new CustomEvent('notification-updated', {
+                detail: { id: notification.id, status: 'resolved' }
+            });
+            window.dispatchEvent(successEvent);
             
         } catch (error) {
             console.error('❌ Error resolving notification:', error);
-            alert('Failed to resolve notification. Please try again.');
+            alert(`Failed to resolve notification: ${error instanceof Error ? error.message : 'Unknown error'}`);
         } finally {
-            // Remove from processing after a delay
             setTimeout(() => {
                 setProcessingIds(prev => {
                     const newSet = new Set(prev);
                     newSet.delete(notification.id);
                     return newSet;
                 });
-            }, 1500);
+            }, 2000);
         }
     };
 
