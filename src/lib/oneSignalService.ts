@@ -13,6 +13,7 @@ export class OneSignalService {
   private appId: string;
   private retryCount = 0;
   private maxRetries = 3;
+  private initPromise: Promise<void> | null = null;
 
   private constructor() {
     this.appId = import.meta.env.VITE_ONESIGNAL_APP_ID;
@@ -40,12 +41,9 @@ export class OneSignalService {
       return;
     }
 
-    if (this.initializing) {
+    if (this.initPromise) {
       console.log('🔔 OneSignal initialization in progress, waiting...');
-      while (this.initializing && this.retryCount < this.maxRetries) {
-        await new Promise(resolve => setTimeout(resolve, 100));
-      }
-      return;
+      return this.initPromise;
     }
 
     if (!this.appId) {
@@ -57,11 +55,17 @@ export class OneSignalService {
       return;
     }
 
+    this.initPromise = this.doInitialize();
+    return this.initPromise;
+  }
+
+  private async doInitialize(): Promise<void> {
     this.initializing = true;
 
     try {
       await this.waitForOneSignal();
 
+      // Check if already initialized
       try {
         if (window.OneSignal?.User?.PushSubscription) {
           const state = await window.OneSignal.User.PushSubscription.optedIn;
@@ -123,6 +127,7 @@ export class OneSignalService {
       if (this.retryCount < this.maxRetries) {
         this.retryCount++;
         this.initializing = false;
+        this.initPromise = null;
         console.log(`🔄 Retrying OneSignal initialization (attempt ${this.retryCount}/${this.maxRetries})`);
         await new Promise(resolve => setTimeout(resolve, 1000));
         return this.initialize();
@@ -146,12 +151,33 @@ export class OneSignalService {
         window.OneSignal.Notifications.addEventListener('foregroundWillDisplay', (event: any) => {
           console.log('🔔 Foreground notification received (new API):', event);
           event.preventDefault();
-          callback(event.notification);
+          
+          // Handle the notification data properly
+          const notificationData = {
+            id: event.notification?.notificationId || `fg-${Date.now()}`,
+            title: event.notification?.title || 'Notification',
+            body: event.notification?.body || '',
+            message: event.notification?.body || '',
+            data: event.notification?.additionalData || {},
+            priority: event.notification?.priority || 5
+          };
+          
+          callback(notificationData);
         });
         
         window.OneSignal.Notifications.addEventListener('click', (event: any) => {
           console.log('🔔 Notification clicked (new API):', event);
-          callback(event.notification);
+          
+          const notificationData = {
+            id: event.notification?.notificationId || `click-${Date.now()}`,
+            title: event.notification?.title || 'Notification',
+            body: event.notification?.body || '',
+            message: event.notification?.body || '',
+            data: event.notification?.additionalData || {},
+            priority: event.notification?.priority || 5
+          };
+          
+          callback(notificationData);
         });
       } 
       else if (window.OneSignal?.on) {
@@ -159,12 +185,32 @@ export class OneSignalService {
         
         window.OneSignal.on('notificationDisplay', (event: any) => {
           console.log('🔔 Foreground notification received (legacy API):', event);
-          callback(event);
+          
+          const notificationData = {
+            id: event.id || `legacy-${Date.now()}`,
+            title: event.heading || event.title || 'Notification',
+            body: event.content || event.message || '',
+            message: event.content || event.message || '',
+            data: event.data || {},
+            priority: event.priority || 5
+          };
+          
+          callback(notificationData);
         });
         
         window.OneSignal.on('notificationClick', (event: any) => {
           console.log('🔔 Notification clicked (legacy API):', event);
-          callback(event);
+          
+          const notificationData = {
+            id: event.id || `legacy-click-${Date.now()}`,
+            title: event.heading || event.title || 'Notification',
+            body: event.content || event.message || '',
+            message: event.content || event.message || '',
+            data: event.data || {},
+            priority: event.priority || 5
+          };
+          
+          callback(notificationData);
         });
       } else {
         console.warn('⚠️ OneSignal foreground notification API not available');
@@ -262,8 +308,9 @@ export class OneSignalService {
 
         try {
           const id = await window.OneSignal.User.PushSubscription.id;
-          console.log('🔔 Subscription status (ID exists):', !!id);
-          return Boolean(id);
+          const token = await window.OneSignal.User.PushSubscription.token;
+          console.log('🔔 Subscription status (ID exists):', !!id, 'Token exists:', !!token);
+          return Boolean(id && token);
         } catch (error) {
           console.warn('⚠️ Failed to check subscription ID:', error);
         }
@@ -302,6 +349,16 @@ export class OneSignalService {
           }
         } catch (error) {
           console.warn('⚠️ Failed to get player ID from User API:', error);
+        }
+
+        try {
+          const token = await window.OneSignal.User.PushSubscription.token;
+          if (token) {
+            console.log('🔔 Player token from new API (using as ID):', token);
+            return token;
+          }
+        } catch (error) {
+          console.warn('⚠️ Failed to get player token from User API:', error);
         }
       }
 
@@ -368,7 +425,7 @@ export class OneSignalService {
       console.log('🔔 Waiting for subscription to be processed...');
       let playerId = null;
       let attempts = 0;
-      const maxAttempts = 15;
+      const maxAttempts = 20; // Increased attempts
       
       while (!playerId && attempts < maxAttempts) {
         await new Promise(resolve => setTimeout(resolve, 1000 + (attempts * 200)));
@@ -723,6 +780,8 @@ export class OneSignalService {
         }
         if (window.OneSignal?.User?.PushSubscription) {
           info.optedIn = await window.OneSignal.User.PushSubscription.optedIn;
+          info.subscriptionId = await window.OneSignal.User.PushSubscription.id;
+          info.subscriptionToken = await window.OneSignal.User.PushSubscription.token;
         }
         
         info.oneSignalLoaded = !!window.OneSignal;
