@@ -12,7 +12,13 @@ interface RecentNotificationsProps {
     session: Session;
 }
 
-export const RecentNotifications: React.FC<RecentNotificationsProps> = ({ notifications, onUpdateNotification, onAddComment, topics, session }) => {
+export const RecentNotifications: React.FC<RecentNotificationsProps> = ({ 
+    notifications, 
+    onUpdateNotification, 
+    onAddComment, 
+    topics, 
+    session 
+}) => {
     const [severityFilter, setSeverityFilter] = useState<Severity | 'all'>('all');
     const [timeFilter, setTimeFilter] = useState<'all' | '1h' | '6h' | '24h'>('all');
     const [searchTerm, setSearchTerm] = useState('');
@@ -58,7 +64,7 @@ export const RecentNotifications: React.FC<RecentNotificationsProps> = ({ notifi
         return notifs.sort((a,b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
     }, [notifications, severityFilter, timeFilter, searchTerm, topics]);
 
-    // FIXED: Enhanced quick action handlers with better state management
+    // Enhanced quick action handlers with better state management and error handling
     const handleQuickAcknowledge = async (e: React.MouseEvent, notification: Notification) => {
         e.stopPropagation();
         
@@ -83,7 +89,6 @@ export const RecentNotifications: React.FC<RecentNotificationsProps> = ({ notifi
                 targetStatus: 'acknowledged'
             });
             
-            // Use the improved updateNotification function (no need for explicit timestamp)
             await onUpdateNotification(notification.id, { 
                 status: 'acknowledged'
             });
@@ -113,7 +118,7 @@ export const RecentNotifications: React.FC<RecentNotificationsProps> = ({ notifi
                     newSet.delete(notification.id);
                     return newSet;
                 });
-            }, 1000); // Reduced to 1 second since we have optimistic updates
+            }, 1000);
         }
     };
 
@@ -141,7 +146,6 @@ export const RecentNotifications: React.FC<RecentNotificationsProps> = ({ notifi
                 targetStatus: 'resolved'
             });
             
-            // Use the improved updateNotification function
             await onUpdateNotification(notification.id, { 
                 status: 'resolved'
             });
