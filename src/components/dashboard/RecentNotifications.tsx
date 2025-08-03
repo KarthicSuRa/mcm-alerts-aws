@@ -58,7 +58,7 @@ export const RecentNotifications: React.FC<RecentNotificationsProps> = ({ notifi
         return notifs.sort((a,b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
     }, [notifications, severityFilter, timeFilter, searchTerm, topics]);
 
-    // IMPROVED: Better error handling and user feedback
+    // FIXED: Enhanced quick action handlers with better state management
     const handleQuickAcknowledge = async (e: React.MouseEvent, notification: Notification) => {
         e.stopPropagation();
         
@@ -83,32 +83,37 @@ export const RecentNotifications: React.FC<RecentNotificationsProps> = ({ notifi
                 targetStatus: 'acknowledged'
             });
             
-            // Update with explicit timestamp
+            // Use the improved updateNotification function (no need for explicit timestamp)
             await onUpdateNotification(notification.id, { 
-                status: 'acknowledged',
-                updated_at: new Date().toISOString()
+                status: 'acknowledged'
             });
             
-            console.log('✅ Notification acknowledgment request sent successfully');
-            
-            // Give user immediate feedback
-            const successEvent = new CustomEvent('notification-updated', {
-                detail: { id: notification.id, status: 'acknowledged' }
-            });
-            window.dispatchEvent(successEvent);
+            console.log('✅ Notification acknowledgment completed successfully');
             
         } catch (error) {
             console.error('❌ Error acknowledging notification:', error);
-            alert(`Failed to acknowledge notification: ${error instanceof Error ? error.message : 'Unknown error'}`);
+            
+            // More user-friendly error messages
+            let errorMessage = 'Failed to acknowledge notification. ';
+            if (error instanceof Error) {
+                if (error.message.includes('PGRST116')) {
+                    errorMessage += 'Notification may have been deleted or is no longer available.';
+                } else if (error.message.includes('permission')) {
+                    errorMessage += 'You do not have permission to modify this notification.';
+                } else {
+                    errorMessage += 'Please try again or refresh the page.';
+                }
+            }
+            alert(errorMessage);
         } finally {
-            // Keep processing state for longer to prevent rapid clicking
+            // Remove from processing set after a short delay
             setTimeout(() => {
                 setProcessingIds(prev => {
                     const newSet = new Set(prev);
                     newSet.delete(notification.id);
                     return newSet;
                 });
-            }, 2000); // Increased to 2 seconds
+            }, 1000); // Reduced to 1 second since we have optimistic updates
         }
     };
 
@@ -136,23 +141,28 @@ export const RecentNotifications: React.FC<RecentNotificationsProps> = ({ notifi
                 targetStatus: 'resolved'
             });
             
-            // Update with explicit timestamp
+            // Use the improved updateNotification function
             await onUpdateNotification(notification.id, { 
-                status: 'resolved',
-                updated_at: new Date().toISOString()
+                status: 'resolved'
             });
             
-            console.log('✅ Notification resolution request sent successfully');
-            
-            // Give user immediate feedback
-            const successEvent = new CustomEvent('notification-updated', {
-                detail: { id: notification.id, status: 'resolved' }
-            });
-            window.dispatchEvent(successEvent);
+            console.log('✅ Notification resolution completed successfully');
             
         } catch (error) {
             console.error('❌ Error resolving notification:', error);
-            alert(`Failed to resolve notification: ${error instanceof Error ? error.message : 'Unknown error'}`);
+            
+            // More user-friendly error messages
+            let errorMessage = 'Failed to resolve notification. ';
+            if (error instanceof Error) {
+                if (error.message.includes('PGRST116')) {
+                    errorMessage += 'Notification may have been deleted or is no longer available.';
+                } else if (error.message.includes('permission')) {
+                    errorMessage += 'You do not have permission to modify this notification.';
+                } else {
+                    errorMessage += 'Please try again or refresh the page.';
+                }
+            }
+            alert(errorMessage);
         } finally {
             setTimeout(() => {
                 setProcessingIds(prev => {
@@ -160,7 +170,7 @@ export const RecentNotifications: React.FC<RecentNotificationsProps> = ({ notifi
                     newSet.delete(notification.id);
                     return newSet;
                 });
-            }, 2000);
+            }, 1000);
         }
     };
 
@@ -251,15 +261,17 @@ export const RecentNotifications: React.FC<RecentNotificationsProps> = ({ notifi
                                                     <>
                                                         <button
                                                             onClick={(e) => handleQuickAcknowledge(e, n)}
-                                                            className="p-1.5 rounded-full text-muted-foreground hover:bg-yellow-100 hover:text-yellow-600 dark:hover:bg-yellow-900/30 dark:hover:text-yellow-400"
+                                                            className="p-1.5 rounded-full text-muted-foreground hover:bg-yellow-100 hover:text-yellow-600 dark:hover:bg-yellow-900/30 dark:hover:text-yellow-400 transition-colors"
                                                             title="Quick Acknowledge"
+                                                            disabled={isProcessing}
                                                         >
                                                             <Icon name="check" className="w-4 h-4" />
                                                         </button>
                                                         <button
                                                             onClick={(e) => handleQuickResolve(e, n)}
-                                                            className="p-1.5 rounded-full text-muted-foreground hover:bg-green-100 hover:text-green-600 dark:hover:bg-green-900/30 dark:hover:text-green-400"
+                                                            className="p-1.5 rounded-full text-muted-foreground hover:bg-green-100 hover:text-green-600 dark:hover:bg-green-900/30 dark:hover:text-green-400 transition-colors"
                                                             title="Quick Resolve"
+                                                            disabled={isProcessing}
                                                         >
                                                             <Icon name="check-check" className="w-4 h-4" />
                                                         </button>
@@ -268,11 +280,17 @@ export const RecentNotifications: React.FC<RecentNotificationsProps> = ({ notifi
                                                 {n.status === 'acknowledged' && !isProcessing && (
                                                     <button
                                                         onClick={(e) => handleQuickResolve(e, n)}
-                                                        className="p-1.5 rounded-full text-muted-foreground hover:bg-green-100 hover:text-green-600 dark:hover:bg-green-900/30 dark:hover:text-green-400"
+                                                        className="p-1.5 rounded-full text-muted-foreground hover:bg-green-100 hover:text-green-600 dark:hover:bg-green-900/30 dark:hover:text-green-400 transition-colors"
                                                         title="Quick Resolve"
+                                                        disabled={isProcessing}
                                                     >
                                                         <Icon name="check-check" className="w-4 h-4" />
                                                     </button>
+                                                )}
+                                                {isProcessing && (
+                                                    <div className="p-1.5 rounded-full">
+                                                        <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin text-muted-foreground"></div>
+                                                    </div>
                                                 )}
                                             </div>
                                         </div>
