@@ -171,11 +171,7 @@ function App() {
       .channel('notifications-global', {
         config: {
           broadcast: { self: false },
-          presence: { key: `user-${session.user.id}` },
-          // Mobile-specific: Enhanced reconnection settings
-          ack: true,
-          timeout: 10000,
-          heartbeat: { interval: 30000 }
+          presence: { key: `user-${session.user.id}` }
         }
       })
       .on<NotificationFromDB>('postgres_changes', { 
@@ -267,10 +263,7 @@ function App() {
       .channel(`comments-${session.user.id}`, {
         config: {
           broadcast: { self: false },
-          presence: { key: session.user.id },
-          ack: true,
-          timeout: 10000,
-          heartbeat: { interval: 30000 }
+          presence: { key: session.user.id }
         }
       })
       .on<CommentFromDB>('postgres_changes', { 
@@ -316,10 +309,7 @@ function App() {
       .channel(`topics-${session.user.id}`, {
         config: {
           broadcast: { self: false },
-          presence: { key: session.user.id },
-          ack: true,
-          timeout: 10000,
-          heartbeat: { interval: 30000 }
+          presence: { key: session.user.id }
         }
       })
       .on<TopicFromDB>('postgres_changes', { 
@@ -350,10 +340,7 @@ function App() {
       .channel(`subscriptions-${session.user.id}`, {
         config: {
           broadcast: { self: false },
-          presence: { key: session.user.id },
-          ack: true,
-          timeout: 10000,
-          heartbeat: { interval: 30000 }
+          presence: { key: session.user.id }
         }
       })
       .on<SubscriptionFromDB>('postgres_changes', { 
