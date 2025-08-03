@@ -10,8 +10,9 @@ import ChartsWidget from '../components/dashboard/ChartsWidget';
 interface DashboardPageProps {
   notifications: Notification[];
   topics: Topic[];
-  onUpdateNotification: (notificationId: string, updates: NotificationUpdatePayload) => void;
-  onAddComment: (notificationId: string, text: string) => void;
+  // Fixed: Changed return types to Promise<void> to match App.tsx
+  onUpdateNotification: (notificationId: string, updates: NotificationUpdatePayload) => Promise<void>;
+  onAddComment: (notificationId: string, text: string) => Promise<void>;
   onNavigate: (page: string) => void;
   onLogout: () => void;
   setIsSidebarOpen: (open: boolean) => void;
