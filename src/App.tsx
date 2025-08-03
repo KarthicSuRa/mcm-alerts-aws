@@ -151,12 +151,13 @@ function App() {
     }
   }, [soundEnabled, snoozedUntil, topics, addToast]);
 
-  // --- Data Fetching and Realtime Subscriptions (FIXED: Major improvements) ---
+  // --- Improved Data Fetching and Realtime Subscriptions ---
   useEffect(() => {
     if (!session || dataFetched.current) return;
     
     let mounted = true;
-    const channels: any[] = [];
+    const channels = new Map(); // Use Map to track channels by name
+    let subscriptionTimeout: NodeJS.Timeout | undefined;
 
     const fetchInitialData = async () => {
       try {
@@ -239,120 +240,207 @@ function App() {
     };
 
     const setupRealtimeSubscriptions = () => {
-      // Notification channel
-      const notificationChannel = supabase
-        .channel('public:notifications')
-        .on<NotificationFromDB>('postgres_changes', { 
-          event: 'INSERT', 
-          schema: 'public', 
-          table: 'notifications' 
-        }, payload => {
-          if (!mounted) return;
-          const newNotification = {...payload.new, comments: [] } as Notification;
-          setNotifications(prev => [newNotification, ...prev]);
-          handleNewNotification(newNotification);
-        })
-        .on<NotificationFromDB>('postgres_changes', { 
-          event: 'UPDATE', 
-          schema: 'public', 
-          table: 'notifications' 
-        }, payload => {
-          if (!mounted) return;
-          setNotifications(prev => prev.map(n => 
-            n.id === payload.new.id ? {...n, ...payload.new} as Notification : n
-          ));
-        })
-        .subscribe();
+      // Add a small delay to ensure initial data is loaded first
+      subscriptionTimeout = setTimeout(() => {
+        if (!mounted) return;
 
-      channels.push(notificationChannel);
+        console.log('Setting up realtime subscriptions...');
 
-      // Comments channel
-      const commentsChannel = supabase
-        .channel('public:comments')
-        .on<CommentFromDB>('postgres_changes', { 
-          event: 'INSERT', 
-          schema: 'public', 
-          table: 'comments' 
-        }, async (payload) => {
-          if (!mounted) return;
-          const newCommentPayload = payload.new;
-          const newComment = {
-            ...newCommentPayload,
-            user_email: newCommentPayload.user_id === session.user.id ? 
-              (session.user.email ?? 'Current User') : 'Another User'
-          } as Comment;
-          
-          setNotifications(prev => prev.map(n => 
-            n.id === newComment.notification_id 
-              ? { 
-                  ...n, 
-                  comments: [...(n.comments || []), newComment]
-                    .sort((a,b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()) 
-                } 
-              : n
-          ));
-        })
-        .subscribe();
-
-      channels.push(commentsChannel);
-        
-      // Topics channel
-      const topicChannel = supabase
-        .channel('public:topics')
-        .on<TopicFromDB>('postgres_changes', { 
-          event: 'INSERT', 
-          schema: 'public', 
-          table: 'topics' 
-        }, payload => {
-          if (!mounted) return;
-          setTopics(prev => [...prev, {...payload.new, subscribed: false} as Topic]);
-        })
-        .subscribe();
-
-      channels.push(topicChannel);
-        
-      // Subscriptions channel
-      const subscriptionChannel = supabase
-        .channel('public:topic_subscriptions')
-        .on<SubscriptionFromDB>('postgres_changes', { 
-          event: '*', 
-          schema: 'public', 
-          table: 'topic_subscriptions', 
-          filter: `user_id=eq.${session.user.id}` 
-        }, (payload) => {
-          if (!mounted) return;
-          
-          if (payload.eventType === 'INSERT') {
-            const newSub = payload.new as SubscriptionFromDB;
-            setTopics(prev => prev.map(t => 
-              t.id === newSub.topic_id ? {...t, subscribed: true, subscription_id: newSub.id} : t
+        // Notification channel with better error handling
+        const notificationChannel = supabase
+          .channel('notifications-channel', {
+            config: {
+              broadcast: { self: false },
+              presence: { key: session.user.id }
+            }
+          })
+          .on<NotificationFromDB>('postgres_changes', { 
+            event: 'INSERT', 
+            schema: 'public', 
+            table: 'notifications' 
+          }, payload => {
+            if (!mounted) return;
+            console.log('New notification received:', payload.new);
+            const newNotification = {...payload.new, comments: [] } as Notification;
+            setNotifications(prev => [newNotification, ...prev]);
+            handleNewNotification(newNotification);
+          })
+          .on<NotificationFromDB>('postgres_changes', { 
+            event: 'UPDATE', 
+            schema: 'public', 
+            table: 'notifications' 
+          }, payload => {
+            if (!mounted) return;
+            console.log('Notification updated:', payload.new);
+            setNotifications(prev => prev.map(n => 
+              n.id === payload.new.id ? {...n, ...payload.new} as Notification : n
             ));
-          }
-          if (payload.eventType === 'DELETE') {
-            const oldSub = payload.old as Partial<SubscriptionFromDB>;
-            if (oldSub?.topic_id) {
+          })
+          .subscribe((status, err) => {
+            if (err) {
+              console.error('Notification channel subscription error:', err);
+            } else {
+              console.log('Notification channel status:', status);
+            }
+          });
+
+        channels.set('notifications', notificationChannel);
+
+        // Comments channel
+        const commentsChannel = supabase
+          .channel('comments-channel', {
+            config: {
+              broadcast: { self: false },
+              presence: { key: session.user.id }
+            }
+          })
+          .on<CommentFromDB>('postgres_changes', { 
+            event: 'INSERT', 
+            schema: 'public', 
+            table: 'comments' 
+          }, async (payload) => {
+            if (!mounted) return;
+            console.log('New comment received:', payload.new);
+            const newCommentPayload = payload.new;
+            const newComment = {
+              ...newCommentPayload,
+              user_email: newCommentPayload.user_id === session.user.id ? 
+                (session.user.email ?? 'Current User') : 'Another User'
+            } as Comment;
+            
+            setNotifications(prev => prev.map(n => 
+              n.id === newComment.notification_id 
+                ? { 
+                    ...n, 
+                    comments: [...(n.comments || []), newComment]
+                      .sort((a,b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()) 
+                  } 
+                : n
+            ));
+          })
+          .subscribe((status, err) => {
+            if (err) {
+              console.error('Comments channel subscription error:', err);
+            } else {
+              console.log('Comments channel status:', status);
+            }
+          });
+
+        channels.set('comments', commentsChannel);
+          
+        // Topics channel
+        const topicChannel = supabase
+          .channel('topics-channel', {
+            config: {
+              broadcast: { self: false },
+              presence: { key: session.user.id }
+            }
+          })
+          .on<TopicFromDB>('postgres_changes', { 
+            event: 'INSERT', 
+            schema: 'public', 
+            table: 'topics' 
+          }, payload => {
+            if (!mounted) return;
+            console.log('New topic received:', payload.new);
+            setTopics(prev => [...prev, {...payload.new, subscribed: false} as Topic]);
+          })
+          .subscribe((status, err) => {
+            if (err) {
+              console.error('Topics channel subscription error:', err);
+            } else {
+              console.log('Topics channel status:', status);
+            }
+          });
+
+        channels.set('topics', topicChannel);
+          
+        // Subscriptions channel
+        const subscriptionChannel = supabase
+          .channel('subscriptions-channel', {
+            config: {
+              broadcast: { self: false },
+              presence: { key: session.user.id }
+            }
+          })
+          .on<SubscriptionFromDB>('postgres_changes', { 
+            event: '*', 
+            schema: 'public', 
+            table: 'topic_subscriptions', 
+            filter: `user_id=eq.${session.user.id}` 
+          }, (payload) => {
+            if (!mounted) return;
+            console.log('Subscription change:', payload);
+            
+            if (payload.eventType === 'INSERT') {
+              const newSub = payload.new as SubscriptionFromDB;
               setTopics(prev => prev.map(t => 
-                t.id === oldSub.topic_id ? {...t, subscribed: false, subscription_id: undefined} : t
+                t.id === newSub.topic_id ? {...t, subscribed: true, subscription_id: newSub.id} : t
               ));
             }
-          }
-        })
-        .subscribe();
+            if (payload.eventType === 'DELETE') {
+              const oldSub = payload.old as Partial<SubscriptionFromDB>;
+              if (oldSub?.topic_id) {
+                setTopics(prev => prev.map(t => 
+                  t.id === oldSub.topic_id ? {...t, subscribed: false, subscription_id: undefined} : t
+                ));
+              }
+            }
+          })
+          .subscribe((status, err) => {
+            if (err) {
+              console.error('Subscriptions channel subscription error:', err);
+            } else {
+              console.log('Subscriptions channel status:', status);
+            }
+          });
 
-      channels.push(subscriptionChannel);
+        channels.set('subscriptions', subscriptionChannel);
+      }, 1000); // 1 second delay
     };
 
     // Execute both functions
-    fetchInitialData();
-    setupRealtimeSubscriptions();
+    fetchInitialData().then(() => {
+      if (mounted) {
+        setupRealtimeSubscriptions();
+      }
+    });
 
     return () => {
+      console.log('Cleaning up realtime subscriptions...');
       mounted = false;
-      channels.forEach(channel => {
-        supabase.removeChannel(channel);
-      });
+      
+      // Clear timeout
+      if (subscriptionTimeout) {
+        clearTimeout(subscriptionTimeout);
+      }
+      
+      // Clean up channels with proper error handling
+      const cleanup = async () => {
+        const channelPromises = Array.from(channels.values()).map(async (channel) => {
+          try {
+            if (channel && channel.state !== 'closed') {
+              // First unsubscribe, then remove
+              await channel.unsubscribe();
+              await new Promise(resolve => setTimeout(resolve, 100)); // Small delay
+              await supabase.removeChannel(channel);
+            }
+          } catch (error) {
+            console.warn('Error cleaning up channel:', error);
+            // Don't throw, just log the warning
+          }
+        });
+        
+        try {
+          await Promise.allSettled(channelPromises);
+        } catch (error) {
+          console.warn('Some channels failed to cleanup properly:', error);
+        }
+      };
+      
+      cleanup();
     };
-  }, [session, handleNewNotification]); // Only depend on session and handleNewNotification
+  }, [session, handleNewNotification]);
 
   // --- OneSignal Push Subscription Management (FIXED: Better error handling) ---
   const subscribeToPush = useCallback(async () => {
