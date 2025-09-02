@@ -1,99 +1,67 @@
 import * as React from 'react';
 import { Icon } from '../ui/Icon';
 import { ThemeContext } from '../../contexts/ThemeContext';
-import { Notification, SystemStatusData, Session } from '../../types';
-import { SystemStatusPopover } from './SystemStatusPopover';
+import { Session } from '../../types';
 
 interface HeaderProps {
-    onNavigate: (page: string) => void;
-    onLogout: () => void;
-    notifications: Notification[];
-    setIsSidebarOpen: (open: boolean) => void;
-    openSettings: () => void;
-    systemStatus: SystemStatusData;
-    session: Session;
+  pageTitle: string;
+  onLogout: () => void;
+  setIsSidebarOpen: (open: boolean) => void;
+  openSettings: () => void;
+  session: Session;
 }
 
-export const Header: React.FC<HeaderProps> = ({ onNavigate, onLogout, notifications, setIsSidebarOpen, openSettings, systemStatus, session }) => {
+export const Header: React.FC<HeaderProps> = ({ pageTitle, onLogout, setIsSidebarOpen, openSettings, session }) => {
     const themeContext = React.useContext(ThemeContext);
     const [isProfileOpen, setProfileOpen] = React.useState(false);
-    const [isStatusOpen, setStatusOpen] = React.useState(false);
     const profileRef = React.useRef<HTMLDivElement>(null);
-    const statusRef = React.useRef<HTMLDivElement>(null);
-    
-    const unacknowledgedCount = notifications.filter(n => n.status === 'new').length;
-
-    const isSystemUp = systemStatus.service === 'Ready' && systemStatus.database === 'Connected';
-    const statusButtonColor = isSystemUp ? 'bg-green-100 text-green-700 dark:bg-green-900/50 dark:text-green-300' : 'bg-red-100 text-red-700 dark:bg-red-900/50 dark:text-red-300';
-    const statusDotColor = isSystemUp ? 'bg-green-500' : 'bg-red-500';
 
     React.useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
             if (profileRef.current && !profileRef.current.contains(event.target as Node)) {
                 setProfileOpen(false);
             }
-            if (statusRef.current && !statusRef.current.contains(event.target as Node)) {
-                setStatusOpen(false);
-            }
         };
         document.addEventListener("mousedown", handleClickOutside);
         return () => document.removeEventListener("mousedown", handleClickOutside);
     }, []);
 
+    const userInitial = session.user.email ? session.user.email.charAt(0).toUpperCase() : '?';
+
     return (
-        <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-border bg-card/80 backdrop-blur-sm px-4 sm:px-6 shrink-0">
+        <header className="sticky top-0 z-20 flex h-16 items-center justify-between border-b border-gray-200 bg-white px-4 sm:px-6 shrink-0">
             <div className="flex items-center gap-4">
                 <button
-                    className="p-2 -ml-2 rounded-md text-muted-foreground lg:hidden"
+                    className="p-2 -ml-2 rounded-md text-gray-600 lg:hidden"
                     onClick={() => setIsSidebarOpen(true)}
                 >
                     <Icon name="menu" className="h-6 w-6" />
                 </button>
-                <div className="flex items-center gap-2">
-                   <img src="/icons/icon-192x192.png" alt="MCM Alerts" className="w-8 h-8" />
-                   <span className="text-lg font-semibold text-foreground hidden sm:inline">MCM Alerts</span>
-                </div>
-
+                <h1 className="text-2xl font-bold text-gray-800">{pageTitle}</h1>
             </div>
             
-            <div className="flex items-center gap-1 sm:gap-2">
-                <div className="relative" ref={statusRef}>
-                    <button 
-                        onClick={() => setStatusOpen(s => !s)} 
-                        className={`hidden sm:flex items-center gap-2 text-sm font-semibold px-3 py-1.5 rounded-full transition-colors ${statusButtonColor}`}
-                    >
-                        <span className={`w-2.5 h-2.5 rounded-full ${statusDotColor} ring-2 ring-offset-2 ring-offset-card dark:ring-offset-dark-card ${statusDotColor}/30`}></span>
-                        {isSystemUp ? 'System Up' : 'System Down'}
-                    </button>
-                    {isStatusOpen && <SystemStatusPopover status={systemStatus} />}
-                </div>
-
-                <button onClick={themeContext?.toggleTheme} className="p-2.5 rounded-full text-muted-foreground hover:bg-accent">
+            <div className="flex items-center gap-2 sm:gap-4">
+                <button onClick={themeContext?.toggleTheme} className="p-2 rounded-full text-gray-600 hover:bg-gray-100">
                     <Icon name={themeContext?.theme === 'light' ? 'moon' : 'sun'} className="w-5 h-5"/>
                 </button>
-                <button onClick={openSettings} className="p-2.5 rounded-full text-muted-foreground hover:bg-accent">
+                <button onClick={openSettings} className="p-2 rounded-full text-gray-600 hover:bg-gray-100">
                     <Icon name="settings" className="w-5 h-5"/>
                 </button>
-                <button className="relative p-2.5 rounded-full text-muted-foreground hover:bg-accent">
-                    <Icon name="bell" className="w-5 h-5"/>
-                    {unacknowledgedCount > 0 && (
-                        <span className="absolute top-1.5 right-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-white text-[10px] font-bold ring-2 ring-card">{unacknowledgedCount}</span>
-                    )}
-                </button>
+                
                 <div className="relative" ref={profileRef}>
-                    <button onClick={() => setProfileOpen(!isProfileOpen)} className="p-2 rounded-full text-muted-foreground hover:bg-accent">
-                        <Icon name="user" className="w-5 h-5" />
+                    <button onClick={() => setProfileOpen(!isProfileOpen)} className="flex items-center justify-center h-9 w-9 rounded-full bg-gray-200 text-gray-600 font-bold text-sm focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary">
+                        {userInitial}
                     </button>
                     {isProfileOpen && (
-                        <div className="absolute right-0 mt-2 w-56 origin-top-right rounded-md bg-popover text-popover-foreground shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none">
-                            <div className="py-1 border-b border-border">
+                        <div className="absolute right-0 mt-2 w-56 origin-top-right rounded-md bg-white shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none">
+                            <div className="py-1 border-b border-gray-200">
                                 <div className="px-4 py-3">
-                                    <p className="text-xs text-muted-foreground">Signed in as</p>
-                                    <p className="text-sm font-medium text-foreground truncate">{session.user.email}</p>
+                                    <p className="text-xs text-gray-500">Signed in as</p>
+                                    <p className="text-sm font-medium text-gray-800 truncate">{session.user.email}</p>
                                 </div>
                             </div>
                             <div className="py-1">
-                                <a href="#" onClick={(e) => { e.preventDefault(); onLogout(); }} className="flex items-center gap-3 px-4 py-2 text-sm text-destructive hover:bg-accent">
+                                <a href="#" onClick={(e) => { e.preventDefault(); onLogout(); }} className="flex items-center gap-3 px-4 py-2 text-sm text-red-600 hover:bg-gray-100">
                                     <Icon name="logout" className="w-4 h-4" /> Logout
                                 </a>
                             </div>

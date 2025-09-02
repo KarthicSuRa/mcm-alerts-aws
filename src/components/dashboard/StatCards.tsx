@@ -1,21 +1,25 @@
-
-
 import React, { useMemo } from 'react';
-import { Notification, NotificationStatus } from '../../types';
+import { Notification } from '../../types';
 import { Icon } from '../ui/Icon';
 
 interface StatCardsProps {
     notifications: Notification[];
 }
 
-const StatCard: React.FC<{ title: string; value: number | string; icon: string; accentColor: string; }> = ({ title, value, icon, accentColor }) => (
-    <div className={`p-6 rounded-xl flex flex-col gap-4 bg-gradient-to-br from-card to-secondary/20 border-border border shadow-lg shadow-black/5 transition-all hover:shadow-xl hover:-translate-y-1 border-t-4 ${accentColor}`}>
-        <div className="flex justify-between items-center">
-            <p className="text-base text-muted-foreground font-semibold">{title}</p>
-            <Icon name={icon} className="w-6 h-6 text-muted-foreground" />
-        </div>
-        <div>
-            <p className="text-4xl font-bold text-foreground">{value}</p>
+const StatCard: React.FC<{ title: string; value: number | string; icon: string; bgColor: string; }> = ({ title, value, icon, bgColor }) => (
+    <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm overflow-hidden">
+        <div className="p-5 flex items-center">
+            <div className={`flex-shrink-0 ${bgColor} p-3 rounded-lg`}>
+                <Icon name={icon} className="h-6 w-6 text-white" />
+            </div>
+            <div className="ml-5 w-0 flex-1">
+                <dl>
+                    <dt className="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">{title}</dt>
+                    <dd>
+                        <div className="text-2xl font-bold text-gray-900 dark:text-white">{value}</div>
+                    </dd>
+                </dl>
+            </div>
         </div>
     </div>
 );
@@ -29,9 +33,9 @@ export const StatCards: React.FC<StatCardsProps> = ({ notifications }) => {
 
     return (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <StatCard title="New Alerts" value={stats.new} icon="alert" accentColor="border-destructive" />
-            <StatCard title="Acknowledged" value={stats.acknowledged} icon="check-circle" accentColor="border-success" />
-            <StatCard title="Resolved" value={stats.resolved} icon="shield-check" accentColor="border-primary" />
+            <StatCard title="New Alerts" value={stats.new} icon="alert" bgColor="bg-red-500" />
+            <StatCard title="Acknowledged" value={stats.acknowledged} icon="check-circle" bgColor="bg-green-500" />
+            <StatCard title="Resolved" value={stats.resolved} icon="shield-check" bgColor="bg-blue-500" />
         </div>
     );
 };

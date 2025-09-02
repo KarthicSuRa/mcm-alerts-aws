@@ -272,3 +272,18 @@ export interface OneSignalPlayer {
 }
 
 export type { Session };
+
+export interface CalendarEvent {
+  id: string;
+  date: string;
+  title: string;
+  subtitle?: string;
+  category: string;
+  color: string;
+}
+
+export interface Category {
+  id: string;
+  name: string;
+  color: string;
+}

@@ -7,6 +7,9 @@ import { DashboardPage } from './pages/DashboardPage';
 import { ApiDocsPage } from './pages/ApiDocsPage';
 import { AuditLogsPage } from './pages/AuditLogsPage';
 import { HowItWorksPage } from './pages/HowItWorksPage';
+import { TopicManagerPage } from './pages/TopicManagerPage';
+import { CalendarPage } from './pages/CalendarPage';
+import { SiteMonitoringPage } from './pages/SiteMonitoringPage';
 import { Sidebar } from './components/layout/Sidebar';
 import { SettingsModal } from './components/layout/SettingsModal';
 import { NotificationToast } from './components/ui/NotificationToast';
@@ -1318,6 +1321,20 @@ function App() {
     case 'how-it-works':
       pageComponent = <HowItWorksPage {...commonProps} />;
       break;
+    case 'site-monitoring':
+      pageComponent = <SiteMonitoringPage {...commonProps} />;
+      break;
+    case 'calendar':
+      pageComponent = <CalendarPage onNavigate={setCurrentPage} />;
+      break;  
+    case 'topic-manager':
+      pageComponent = <TopicManagerPage
+        {...commonProps}
+        topics={topics}
+        onAddTopic={handleAddTopic}
+        onToggleSubscription={handleToggleSubscription}
+      />;
+      break; 
     default:
       pageComponent = <DashboardPage 
         {...commonProps}
