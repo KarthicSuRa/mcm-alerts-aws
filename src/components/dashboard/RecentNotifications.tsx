@@ -8,6 +8,7 @@ interface RecentNotificationsProps {
     notifications: Notification[];
     onUpdateNotification: (notificationId: string, updates: NotificationUpdatePayload) => Promise<void>;
     onAddComment: (notificationId: string, text: string) => Promise<void>;
+    onClearLogs: () => Promise<void>;
     topics: Topic[];
     session: Session;
 }
@@ -16,6 +17,7 @@ export const RecentNotifications: React.FC<RecentNotificationsProps> = ({
     notifications, 
     onUpdateNotification, 
     onAddComment, 
+    onClearLogs,
     topics, 
     session 
 }) => {
@@ -63,6 +65,12 @@ export const RecentNotifications: React.FC<RecentNotificationsProps> = ({
         
         return notifs.sort((a,b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
     }, [notifications, severityFilter, timeFilter, searchTerm, topics]);
+
+    const handleClearLogs = () => {
+        if (window.confirm('Are you sure you want to clear all notifications? This action cannot be undone.')) {
+            onClearLogs();
+        }
+    };
 
     // Enhanced quick action handlers with better state management and error handling
     const handleQuickAcknowledge = async (e: React.MouseEvent, notification: Notification) => {
@@ -182,7 +190,16 @@ export const RecentNotifications: React.FC<RecentNotificationsProps> = ({
         <div className="bg-gradient-to-br from-card to-secondary/20 rounded-xl border border-border shadow-lg shadow-black/5 h-full max-h-[calc(100vh-8rem)] flex flex-col">
             {/* Fixed Header - doesn't scroll */}
             <div className="p-4 border-b border-border flex-shrink-0">
-                <h3 className="text-xl font-semibold mb-4">Recent Notifications</h3>
+                <div className="flex justify-between items-center mb-4">
+                    <h3 className="text-xl font-semibold">Recent Notifications</h3>
+                    <button 
+                        onClick={handleClearLogs}
+                        className="flex items-center gap-2 text-sm font-semibold text-red-600 hover:text-red-700 transition-colors"
+                    >
+                        <Icon name="trash" className="w-5 h-5" />
+                        Clear Logs
+                    </button>
+                </div>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
                     <div className="relative md:col-span-1">
                          <Icon name="search" className="w-4 h-4 text-muted-foreground absolute left-3 top-1/2 -translate-y-1/2" />

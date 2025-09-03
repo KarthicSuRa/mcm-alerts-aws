@@ -1264,7 +1264,56 @@ function App() {
       alert('Failed to update subscription. Please try again.');
     }
   }, [session, isPushEnabled]);
+  const handleDeleteTopic = useCallback(async (topic: Topic) => {
+    if (!session) return;
+    try {
+      // First delete subscriptions related to the topic to avoid foreign key issues
+      await supabase.from('topic_subscriptions').delete().eq('topic_id', topic.id);
 
+      // Then delete the topic itself
+      const { error } = await supabase.from('topics').delete().eq('id', topic.id);
+      if (error) {
+        console.error("Error deleting topic:", error);
+        alert(`Failed to delete topic: ${error.message}`);
+      } else {
+        console.log('✅ Topic deleted successfully');
+        // Update the UI
+        setTopics(prev => prev.filter(t => t.id !== topic.id));
+      }
+    } catch (error) {
+      console.error('Error deleting topic:', error);
+      alert('Failed to delete topic. Please try again.');
+    }
+  }, [session]);
+
+  const handleClearLogs = useCallback(async () => {
+    if (!session) return;
+    try {
+        console.log('🔥 Clearing all notifications...');
+        
+        // This will delete all notifications. Ensure you have cascading deletes
+        // set up in your Supabase database for related comments, or delete them first.
+        const { error } = await supabase
+            .from('notifications')
+            .delete()
+            .neq('id', '00000000-0000-0000-0000-000000000000'); // Condition to delete all rows
+
+        if (error) {
+            console.error("❌ Error clearing notifications:", error);
+            alert(`Failed to clear logs: ${error.message}`);
+            return;
+        }
+
+        console.log('✅ All notifications cleared successfully');
+        // Update the UI
+        setNotifications([]);
+        setToasts([]);
+
+    } catch (error) {
+        console.error("❌ Failed to clear logs:", error);
+        alert('Failed to clear logs. Please try again.');
+    }
+  }, [session]);
   const themeContextValue = useMemo(() => ({ theme, toggleTheme }), [theme, toggleTheme]);
 
   // Show loading while auth is initializing
@@ -1296,6 +1345,7 @@ function App() {
   const commonProps = {
     onLogout: handleLogout,
     onNavigate: handleNavigate,
+    isSidebarOpen,
     setIsSidebarOpen,
     notifications,
     openSettings: () => setIsSettingsOpen(true),
@@ -1310,6 +1360,7 @@ function App() {
         topics={topics}
         onUpdateNotification={updateNotification}
         onAddComment={addComment}
+        onClearLogs={handleClearLogs}
       />;
       break;
     case 'api-docs':
@@ -1325,7 +1376,7 @@ function App() {
       pageComponent = <SiteMonitoringPage {...commonProps} />;
       break;
     case 'calendar':
-      pageComponent = <CalendarPage onNavigate={setCurrentPage} />;
+      pageComponent = <CalendarPage {...commonProps} />;
       break;  
     case 'topic-manager':
       pageComponent = <TopicManagerPage
@@ -1333,6 +1384,7 @@ function App() {
         topics={topics}
         onAddTopic={handleAddTopic}
         onToggleSubscription={handleToggleSubscription}
+        onDeleteTopic={handleDeleteTopic}
       />;
       break; 
     default:
@@ -1341,6 +1393,7 @@ function App() {
         topics={topics}
         onUpdateNotification={updateNotification}
         onAddComment={addComment}
+        onClearLogs={handleClearLogs}
       />;
       break;
   }
@@ -1378,58 +1431,6 @@ function App() {
             onSubscribeToPush={subscribeToPush}
             onUnsubscribeFromPush={unsubscribeFromPush}
           />
-
-          {/* Debug buttons - Remove in production */}
-          {process.env.NODE_ENV === 'development' && (
-            <div className="fixed top-4 right-4 flex gap-2 z-50">
-              <button
-                onClick={forceRefreshNotifications}
-                className="bg-blue-500 text-white px-3 py-1 rounded text-sm hover:bg-blue-600"
-                title="Force refresh notifications"
-              >
-                🔄 Refresh
-              </button>
-              <button
-                onClick={() => {
-                  console.log('🐛 Current app state:', {
-                    notifications: notifications.length,
-                    topics: topics.length,
-                    session: !!session,
-                    dataFetched: dataFetched.current,
-                    oneSignalInitialized: oneSignalInitialized.current,
-                    subscriptions: realtimeSubscriptions.current.size,
-                    subscriptionNames: Array.from(realtimeSubscriptions.current.keys()),
-                    isPushEnabled,
-                    soundEnabled,
-                    snoozedUntil: !!snoozedUntil,
-                    authLoading,
-                    pendingUpdates: pendingUpdates.current.size
-                  });
-                }}
-                className="bg-green-500 text-white px-3 py-1 rounded text-sm hover:bg-green-600"
-                title="Log current state to console"
-              >
-                🐛 Debug
-              </button>
-              <button
-                onClick={() => {
-                  dataFetched.current = false;
-                  oneSignalInitialized.current = false;
-                  initializationInProgress.current = false;
-                  pendingUpdates.current.forEach(timeout => clearTimeout(timeout));
-                  pendingUpdates.current.clear();
-                  setNotifications([]);
-                  setTopics([]);
-                  oneSignalService.reset();
-                  console.log('🔄 App state reset for testing');
-                }}
-                className="bg-red-500 text-white px-3 py-1 rounded text-sm hover:bg-red-600"
-                title="Reset app state for testing"
-              >
-                🔄 Reset
-              </button>
-            </div>
-          )}
         </ErrorBoundary>
       </div>
       

@@ -1,33 +1,145 @@
-import React from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { Header } from '../components/layout/Header';
 import SiteList from '../components/monitoring/SiteList';
 import SiteMap from '../components/monitoring/SiteMap';
-import { Icon } from '../components/ui/Icon';
+import { AddSiteModal } from '../components/monitoring/AddSiteModal';
+import { Button } from '../components/ui/Button';
+import { type Notification, type Topic, type SystemStatusData, type Session, type Site } from '../types';
+import { supabase } from '../lib/supabaseClient';
 
 interface SiteMonitoringPageProps {
+  notifications: Notification[];
+  topics: Topic[];
   onNavigate: (page: string) => void;
+  onLogout: () => void;
+  isSidebarOpen: boolean;
+  setIsSidebarOpen: (open: boolean) => void;
+  openSettings: () => void;
+  systemStatus: SystemStatusData;
+  session: Session;
 }
 
-export const SiteMonitoringPage: React.FC<SiteMonitoringPageProps> = ({ onNavigate }) => {
+export const SiteMonitoringPage: React.FC<SiteMonitoringPageProps> = ({
+  notifications,
+  onNavigate,
+  onLogout,
+  isSidebarOpen,
+  setIsSidebarOpen,
+  openSettings,
+  systemStatus,
+  session,
+}) => {
+  const [sites, setSites] = useState<Site[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [isAddSiteModalOpen, setIsAddSiteModalOpen] = useState(false);
+
+  const fetchSiteStatus = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      // As requested, using the existing 'site-monitoring' edge function
+      const { data, error: functionError } = await supabase.functions.invoke('site-monitoring');
+
+      if (functionError) {
+        // Handle potential errors from the edge function
+        if (functionError.message.includes("not found")) {
+            throw new Error("The 'site-monitoring' edge function could not be found. Please ensure it is deployed correctly.");
+        }
+        throw functionError;
+      }
+
+      if (!data || !data.sites) {
+        console.warn("Edge function returned no site data.");
+        setSites([]);
+      } else {
+        setSites(data.sites as Site[]);
+      }
+
+    } catch (e: any) {
+      setError(`Failed to fetch site status: ${e.message}`);
+      console.error("Error fetching initial site status:", e);
+      setSites([]); // Clear sites on error
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    // Fetch initial data on component mount
+    fetchSiteStatus();
+
+    // Set up real-time subscription for future updates
+    const channel = supabase
+      .channel('public:ping_logs')
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'ping_logs' },
+        (payload) => {
+          const newLog = payload.new as { site_id: string; is_up: boolean; created_at: string };
+          
+          setSites(currentSites =>
+            currentSites.map(site =>
+              site.id === newLog.site_id
+                ? { ...site, status: newLog.is_up ? 'online' : 'offline', last_checked: newLog.created_at }
+                : site
+            )
+          );
+        }
+      )
+      .subscribe((status, err) => {
+          if (status === 'SUBSCRIBED') {
+            console.log('Realtime channel for ping_logs is active.');
+          }
+          if (err) {
+            console.error('Realtime channel error:', err);
+            setError('Realtime connection to site status failed. Please refresh the page.');
+          }
+      });
+
+    // Clean up the subscription on component unmount
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [fetchSiteStatus]);
+
   return (
-    <div className="p-4 md:p-6 lg:p-8 text-foreground bg-background">
-        <div className="flex items-center mb-6">
-            <button onClick={() => onNavigate('dashboard')} className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 mr-4 lg:hidden">
-                <Icon name="arrow-left" className="h-5 w-5 text-gray-700 dark:text-gray-300" />
-            </button>
-            <h1 className="text-3xl font-bold">Site Monitoring</h1>
+    <>
+      <Header
+        onNavigate={onNavigate}
+        onLogout={onLogout}
+        notifications={notifications}
+        isSidebarOpen={isSidebarOpen}
+        setIsSidebarOpen={setIsSidebarOpen}
+        openSettings={openSettings}
+        systemStatus={systemStatus}
+        session={session}
+      />
+      <main className="flex-1 overflow-y-auto bg-gray-50 dark:bg-gray-900 lg:ml-72">
+        <div className="max-w-screen-2xl mx-auto p-4 sm:p-6 lg:p-8">
+          <div className="flex justify-between items-center mb-6">
+            <div>
+              <h1 className="text-2xl font-bold text-gray-800 dark:text-white">Site Monitoring</h1>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                Track the real-time status and performance of your websites and services.
+              </p>
+            </div>
+            <Button onClick={() => setIsAddSiteModalOpen(true)}>Add New Site</Button>
+          </div>
+          
+          <div className="h-96 rounded-lg overflow-hidden mb-6 shadow-sm">
+            <SiteMap sites={sites} loading={loading} error={error} />
+          </div>
+          
+          <SiteList sites={sites} loading={loading} error={error} refetch={fetchSiteStatus} />
+
         </div>
-
-      {/* Map View */}
-      <div className="mb-8">
-        <h2 className="text-2xl font-semibold mb-4">Site Availability Map</h2>
-        <SiteMap />
-      </div>
-
-      {/* List View */}
-      <div>
-        <h2 className="text-2xl font-semibold mb-4">All Monitored Sites</h2>
-        <SiteList />
-      </div>
-    </div>
+      </main>
+      <AddSiteModal 
+        isOpen={isAddSiteModalOpen} 
+        onClose={() => setIsAddSiteModalOpen(false)} 
+        onSiteAdded={fetchSiteStatus} 
+      />
+    </>
   );
 };

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useImperativeHandle, forwardRef } from 'react';
 import { CalendarFilterBar } from './CalendarFilterBar';
 import { CalendarGrid } from './CalendarGrid';
 import { EventModal } from './EventModal';
@@ -6,7 +6,11 @@ import { CategoryManager } from './CategoryManager';
 import { sampleEvents, sampleCategories } from '../../data/calendar-data';
 import { CalendarEvent, Category } from '../../types';
 
-export const CalendarView: React.FC = () => {
+export interface CalendarViewHandle {
+  resetToToday: () => void;
+}
+
+export const CalendarView = forwardRef<CalendarViewHandle, {}>((props, ref) => {
   const [currentDate, setCurrentDate] = useState(new Date(2024, 11, 1)); // December 2024
   const [events, setEvents] = useState<CalendarEvent[]>(sampleEvents);
   const [categories, setCategories] = useState<Category[]>(sampleCategories);
@@ -19,6 +23,12 @@ export const CalendarView: React.FC = () => {
     systems: [],
     priorities: []
   });
+
+  useImperativeHandle(ref, () => ({
+    resetToToday() {
+      setCurrentDate(new Date());
+    }
+  }));
 
   const handleFilterChange = (filterType: string, value: any) => {
     setFilters(prev => ({ ...prev, [filterType]: value }));
@@ -95,4 +105,4 @@ export const CalendarView: React.FC = () => {
       )}
     </div>
   );
-};
+});

@@ -7,9 +7,10 @@ interface TopicManagerProps {
     session: Session | null;
     onAddTopic: (name: string, description: string) => Promise<void>;
     onToggleSubscription: (topic: Topic) => Promise<void>;
+    onDeleteTopic: (topic: Topic) => Promise<void>;
 }
 
-export const TopicManager: React.FC<TopicManagerProps> = ({ topics, session, onAddTopic, onToggleSubscription }) => {
+export const TopicManager: React.FC<TopicManagerProps> = ({ topics, session, onAddTopic, onToggleSubscription, onDeleteTopic }) => {
     const [isAdding, setIsAdding] = useState(false);
     const [newTopicName, setNewTopicName] = useState('');
     const [newTopicDesc, setNewTopicDesc] = useState('');
@@ -28,6 +29,12 @@ export const TopicManager: React.FC<TopicManagerProps> = ({ topics, session, onA
         setNewTopicName('');
         setNewTopicDesc('');
     }
+
+    const handleDeleteConfirmation = (topic: Topic) => {
+        if (window.confirm(`Are you sure you want to delete the topic "${topic.name}"?`)) {
+            onDeleteTopic(topic);
+        }
+    };
 
     return (
         <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 h-full">
@@ -87,11 +94,19 @@ export const TopicManager: React.FC<TopicManagerProps> = ({ topics, session, onA
                                 <p className="font-semibold text-lg text-gray-800 dark:text-white">{topic.name}</p>
                                 <p className="text-sm text-gray-600 dark:text-gray-400">{topic.description}</p>
                             </div>
-                             <button 
-                                onClick={() => onToggleSubscription(topic)}
-                                className={`relative inline-flex items-center h-6 rounded-full w-11 transition-colors duration-200 ease-in-out ${topic.subscribed ? 'bg-blue-600' : 'bg-gray-300 dark:bg-gray-600'}`}>
-                                <span className={`inline-block w-4 h-4 transform bg-white rounded-full transition-transform duration-200 ease-in-out ${topic.subscribed ? 'translate-x-6' : 'translate-x-1'}`} />
-                            </button>
+                            <div className="flex items-center gap-4">
+                                 <button 
+                                    onClick={() => onToggleSubscription(topic)}
+                                    className={`relative inline-flex items-center h-6 rounded-full w-11 transition-colors duration-200 ease-in-out ${topic.subscribed ? 'bg-blue-600' : 'bg-gray-300 dark:bg-gray-600'}`}>
+                                    <span className={`inline-block w-4 h-4 transform bg-white rounded-full transition-transform duration-200 ease-in-out ${topic.subscribed ? 'translate-x-6' : 'translate-x-1'}`} />
+                                </button>
+                                <button 
+                                    onClick={() => handleDeleteConfirmation(topic)}
+                                    className="text-gray-400 hover:text-red-500 transition-colors"
+                                >
+                                    <Icon name="trash" className="w-5 h-5" />
+                                </button>
+                            </div>
                         </div>
                     ))}
                 </div>

@@ -8,6 +8,7 @@ interface AuditLogsPageProps {
   notifications: Notification[];
   onNavigate: (page: string) => void;
   onLogout: () => void;
+  isSidebarOpen: boolean;
   setIsSidebarOpen: (open: boolean) => void;
   openSettings: () => void;
   systemStatus: SystemStatusData;
@@ -54,7 +55,7 @@ const getActionStyling = (action: string): { icon: string; color: string } => {
     }
 }
 
-export const AuditLogsPage: React.FC<AuditLogsPageProps> = ({ notifications, onNavigate, onLogout, setIsSidebarOpen, openSettings, systemStatus, session }) => {
+export const AuditLogsPage: React.FC<AuditLogsPageProps> = ({ notifications, onNavigate, onLogout, isSidebarOpen, setIsSidebarOpen, openSettings, systemStatus, session }) => {
     const [searchTerm, setSearchTerm] = useState('');
     const [timeFilter, setTimeFilter] = useState('all');
 
@@ -88,8 +89,8 @@ export const AuditLogsPage: React.FC<AuditLogsPageProps> = ({ notifications, onN
 
     return (
     <>
-        <Header onNavigate={onNavigate} onLogout={onLogout} notifications={notifications} setIsSidebarOpen={setIsSidebarOpen} openSettings={openSettings} systemStatus={systemStatus} session={session} />
-        <main className="flex-1 overflow-y-auto lg:ml-72">
+        <Header onNavigate={onNavigate} onLogout={onLogout} notifications={notifications} isSidebarOpen={isSidebarOpen} setIsSidebarOpen={setIsSidebarOpen} openSettings={openSettings} systemStatus={systemStatus} session={session} />
+        <main className="flex-1 overflow-y-auto bg-background lg:ml-72">
             <div className="max-w-screen-2xl mx-auto p-4 sm:p-6 lg:p-8">
                 <h1 className="text-4xl font-bold mb-1">Audit Logs</h1>
                 <p className="text-muted-foreground mb-6">A detailed history of all notification events and user actions.</p>

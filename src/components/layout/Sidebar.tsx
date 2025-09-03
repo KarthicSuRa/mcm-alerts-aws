@@ -30,7 +30,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         <>
             {isSidebarOpen && <div className="fixed inset-0 bg-black/60 z-30 lg:hidden" onClick={() => setIsSidebarOpen(false)}></div>}
             <aside 
-                className={`fixed top-0 left-0 z-40 h-screen w-64 bg-slate-900 text-slate-300 flex flex-col transition-transform duration-300 ease-in-out lg:translate-x-0 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}
+                className={`fixed top-0 left-0 z-40 h-screen w-72 bg-slate-900 text-slate-300 flex flex-col transition-transform duration-300 ease-in-out lg:translate-x-0 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}
             >
                 <div className="h-16 flex items-center justify-center px-4 border-b border-slate-700 shrink-0">
                     <button onClick={() => onNavigate('dashboard')} className="flex items-center gap-2 text-white">

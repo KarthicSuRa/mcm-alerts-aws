@@ -1,17 +1,26 @@
 import * as React from 'react';
 import { Icon } from '../ui/Icon';
 import { ThemeContext } from '../../contexts/ThemeContext';
-import { Session } from '../../types';
+import { Session, Notification, SystemStatusData } from '../../types';
 
 interface HeaderProps {
-  pageTitle: string;
   onLogout: () => void;
+  isSidebarOpen: boolean;
   setIsSidebarOpen: (open: boolean) => void;
   openSettings: () => void;
   session: Session;
+  notifications: Notification[];
+  systemStatus: SystemStatusData;
+  onNavigate: (page: string) => void;
 }
 
-export const Header: React.FC<HeaderProps> = ({ pageTitle, onLogout, setIsSidebarOpen, openSettings, session }) => {
+export const Header: React.FC<HeaderProps> = ({ 
+  onLogout, 
+  isSidebarOpen, 
+  setIsSidebarOpen, 
+  openSettings, 
+  session,
+}) => {
     const themeContext = React.useContext(ThemeContext);
     const [isProfileOpen, setProfileOpen] = React.useState(false);
     const profileRef = React.useRef<HTMLDivElement>(null);
@@ -22,53 +31,87 @@ export const Header: React.FC<HeaderProps> = ({ pageTitle, onLogout, setIsSideba
                 setProfileOpen(false);
             }
         };
-        document.addEventListener("mousedown", handleClickOutside);
-        return () => document.removeEventListener("mousedown", handleClickOutside);
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
 
-    const userInitial = session.user.email ? session.user.email.charAt(0).toUpperCase() : '?';
-
     return (
-        <header className="sticky top-0 z-20 flex h-16 items-center justify-between border-b border-gray-200 bg-white px-4 sm:px-6 shrink-0">
-            <div className="flex items-center gap-4">
-                <button
-                    className="p-2 -ml-2 rounded-md text-gray-600 lg:hidden"
-                    onClick={() => setIsSidebarOpen(true)}
-                >
-                    <Icon name="menu" className="h-6 w-6" />
-                </button>
-                <h1 className="text-2xl font-bold text-gray-800">{pageTitle}</h1>
+        <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-border bg-card px-4 sm:px-6 shrink-0">
+          {/* Left side: Logo, Title, and mobile menu button */}
+          <div className="flex items-center gap-4">
+            <button
+              className="p-2 -ml-2 rounded-md text-muted-foreground lg:hidden"
+              onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+              aria-label="Toggle sidebar"
+            >
+              <Icon name="menu" className="h-6 w-6" />
+            </button>
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-primary/10 rounded-lg">
+                <Icon name="mcmLogo" className="h-6 w-6 text-primary" />
+              </div>
+              <h1 className="text-xl font-bold text-foreground">MCM Alerts</h1>
             </div>
-            
-            <div className="flex items-center gap-2 sm:gap-4">
-                <button onClick={themeContext?.toggleTheme} className="p-2 rounded-full text-gray-600 hover:bg-gray-100">
-                    <Icon name={themeContext?.theme === 'light' ? 'moon' : 'sun'} className="w-5 h-5"/>
-                </button>
-                <button onClick={openSettings} className="p-2 rounded-full text-gray-600 hover:bg-gray-100">
-                    <Icon name="settings" className="w-5 h-5"/>
-                </button>
-                
-                <div className="relative" ref={profileRef}>
-                    <button onClick={() => setProfileOpen(!isProfileOpen)} className="flex items-center justify-center h-9 w-9 rounded-full bg-gray-200 text-gray-600 font-bold text-sm focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary">
-                        {userInitial}
-                    </button>
-                    {isProfileOpen && (
-                        <div className="absolute right-0 mt-2 w-56 origin-top-right rounded-md bg-white shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none">
-                            <div className="py-1 border-b border-gray-200">
-                                <div className="px-4 py-3">
-                                    <p className="text-xs text-gray-500">Signed in as</p>
-                                    <p className="text-sm font-medium text-gray-800 truncate">{session.user.email}</p>
-                                </div>
-                            </div>
-                            <div className="py-1">
-                                <a href="#" onClick={(e) => { e.preventDefault(); onLogout(); }} className="flex items-center gap-3 px-4 py-2 text-sm text-red-600 hover:bg-gray-100">
-                                    <Icon name="logout" className="w-4 h-4" /> Logout
-                                </a>
-                            </div>
-                        </div>
-                    )}
+          </div>
+
+          {/* Right side: Actions and User Profile */}
+          <div className="flex items-center gap-4">
+            {/* Search */}
+            <div className="relative hidden md:block">
+              <Icon name="search" className="w-5 h-5 text-muted-foreground absolute left-3 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                placeholder="Search alerts..."
+                className="w-full pl-10 pr-4 py-2 text-sm rounded-md border border-border bg-transparent shadow-sm focus:border-ring focus:ring-ring"
+              />
+            </div>
+
+            {/* Theme Toggle */}
+            <button
+              onClick={themeContext.toggleTheme}
+              className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors p-2 rounded-md"
+              aria-label="Toggle theme"
+            >
+              <Icon name={themeContext.theme === 'dark' ? 'sun' : 'moon'} className="w-5 h-5" />
+              <span className="hidden sm:inline text-sm font-medium">Theme</span>
+            </button>
+
+            {/* Settings */}
+            <button
+              onClick={openSettings}
+              className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors p-2 rounded-md"
+              aria-label="Open settings"
+            >
+              <Icon name="settings" className="w-5 h-5" />
+              <span className="hidden sm:inline text-sm font-medium">Settings</span>
+            </button>
+
+            {/* Profile Dropdown */}
+            <div className="relative" ref={profileRef}>
+              <button
+                onClick={() => setProfileOpen(prev => !prev)}
+                className="flex items-center gap-2 p-1 rounded-full focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+              >
+                <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center text-primary font-bold">
+                  {session.user.email ? session.user.email[0].toUpperCase() : 'U'}
                 </div>
+                <span className="hidden md:inline text-sm font-medium text-foreground">{session.user.email}</span>
+                <Icon name="chevron-down" className="w-4 h-4 text-muted-foreground hidden md:inline" />
+              </button>
+
+              {isProfileOpen && (
+                <div className="absolute right-0 mt-2 w-48 bg-card border border-border rounded-md shadow-lg py-1 z-10">
+                  <button
+                    onClick={onLogout}
+                    className="w-full text-left px-4 py-2 text-sm text-foreground hover:bg-accent flex items-center gap-2"
+                  >
+                    <Icon name="log-out" className="w-4 h-4" />
+                    <span>Logout</span>
+                  </button>
+                </div>
+              )}
             </div>
+          </div>
         </header>
     );
 };
