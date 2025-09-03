@@ -1,4 +1,4 @@
-import { Session } from \'@supabase/supabase-js\';
+import { Session } from '@supabase/supabase-js';
 
 export interface Database {
   public: {
@@ -11,8 +11,8 @@ export interface Database {
           type: string
           title: string
           message: string
-          severity: \'low\' | \'medium\' | \'high\'
-          status: \'new\' | \'acknowledged\' | \'resolved\'
+          severity: 'low' | 'medium' | 'high'
+          status: 'new' | 'acknowledged' | 'resolved'
           timestamp: string
           site: string | null
           topic_id: string | null
@@ -24,8 +24,8 @@ export interface Database {
           type?: string
           title: string
           message: string
-          severity?: \'low\' | \'medium\' | \'high\'
-          status?: \'new\' | \'acknowledged\' | \'resolved\'
+          severity?: 'low' | 'medium' | 'high'
+          status?: 'new' | 'acknowledged' | 'resolved'
           timestamp?: string
           site?: string | null
           topic_id?: string | null
@@ -37,19 +37,19 @@ export interface Database {
           type?: string
           title?: string
           message?: string
-          severity?: \'low\' | \'medium\' | \'high\'
-          status?: \'new\' | \'acknowledged\' | \'resolved\'
+          severity?: 'low' | 'medium' | 'high'
+          status?: 'new' | 'acknowledged' | 'resolved'
           timestamp?: string
           site?: string | null
           topic_id?: string | null
         }
         Relationships: [
           {
-            foreignKeyName: \"notifications_topic_id_fkey\"
-            columns: [\"topic_id\"]
+            foreignKeyName: "notifications_topic_id_fkey"
+            columns: ["topic_id"]
             isOneToOne: false
-            referencedRelation: \"topics\"
-            referencedColumns: [\"id\"]
+            referencedRelation: "topics"
+            referencedColumns: ["id"]
           }
         ]
       }
@@ -98,18 +98,18 @@ export interface Database {
         }
         Relationships: [
           {
-            foreignKeyName: \"topic_subscriptions_user_id_fkey\"
-            columns: [\"user_id\"]
+            foreignKeyName: "topic_subscriptions_user_id_fkey"
+            columns: ["user_id"]
             isOneToOne: false
-            referencedRelation: \"users\"
-            referencedColumns: [\"id\"]
+            referencedRelation: "users"
+            referencedColumns: ["id"]
           },
           {
-            foreignKeyName: \"topic_subscriptions_topic_id_fkey\"
-            columns: [\"topic_id\"]
+            foreignKeyName: "topic_subscriptions_topic_id_fkey"
+            columns: ["topic_id"]
             isOneToOne: false
-            referencedRelation: \"topics\"
-            referencedColumns: [\"id\"]
+            referencedRelation: "topics"
+            referencedColumns: ["id"]
           }
         ]
       }
@@ -137,18 +137,18 @@ export interface Database {
         }
         Relationships: [
           {
-            foreignKeyName: \"comments_notification_id_fkey\"
-            columns: [\"notification_id\"]
+            foreignKeyName: "comments_notification_id_fkey"
+            columns: ["notification_id"]
             isOneToOne: false
-            referencedRelation: \"notifications\"
-            referencedColumns: [\"id\"]
+            referencedRelation: "notifications"
+            referencedColumns: ["id"]
           },
           {
-            foreignKeyName: \"comments_user_id_fkey\"
-            columns: [\"user_id\"]
+            foreignKeyName: "comments_user_id_fkey"
+            columns: ["user_id"]
             isOneToOne: false
-            referencedRelation: \"users\"
-            referencedColumns: [\"id\"]
+            referencedRelation: "users"
+            referencedColumns: ["id"]
           }
         ]
       }
@@ -176,11 +176,11 @@ export interface Database {
         }
         Relationships: [
           {
-            foreignKeyName: \"onesignal_players_user_id_fkey\"
-            columns: [\"user_id\"]
+            foreignKeyName: "onesignal_players_user_id_fkey"
+            columns: ["user_id"]
             isOneToOne: true
-            referencedRelation: \"users\"
-            referencedColumns: [\"id\"]
+            referencedRelation: "users"
+            referencedColumns: ["id"]
           }
         ]
       }
@@ -200,16 +200,16 @@ export interface Database {
   }
 }
 
-export type Theme = \'light\' | \'dark\';
+export type Theme = 'light' | 'dark';
 
 export interface ThemeContextType {
   theme: Theme;
   toggleTheme: () => void;
 }
 
-export type Severity = \'low\' | \'medium\' | \'high\';
+export type Severity = 'low' | 'medium' | 'high';
 
-export type NotificationStatus = \'new\' | \'acknowledged\' | \'resolved\';
+export type NotificationStatus = 'new' | 'acknowledged' | 'resolved';
 
 export interface Comment {
   id: string;
@@ -235,7 +235,7 @@ export interface Notification {
   updated_at: string;
 }
 
-export type NotificationUpdatePayload = Database[\'public\'][\'Tables\'][\'notifications\'][\'Update\'];
+export type NotificationUpdatePayload = Database['public']['Tables']['notifications']['Update'];
 
 export interface Topic {
   id: string;
@@ -257,10 +257,10 @@ export interface AuditLog {
 }
 
 export interface SystemStatusData {
-  service: \'Ready\' | \'Error\';
-  database: \'Connected\' | \'Disconnected\';
-  push: \'Supported\' | \'Unsupported\' | \'OneSignal\';
-  subscription: \'Active\' | \'Inactive\';
+  service: 'Ready' | 'Error';
+  database: 'Connected' | 'Disconnected';
+  push: 'Supported' | 'Unsupported' | 'OneSignal';
+  subscription: 'Active' | 'Inactive';
 }
 
 export interface OneSignalPlayer {
