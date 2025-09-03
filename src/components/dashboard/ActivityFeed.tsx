@@ -96,7 +96,7 @@ export const ActivityFeed: React.FC<ActivityFeedProps> = ({ notifications }) => 
         <div className="bg-gradient-to-br from-card to-secondary/20 p-6 rounded-xl border border-border shadow-lg shadow-black/5 h-full">
             <div className="flex items-center gap-2 mb-4">
                 <Icon name="trending-up" className="w-5 h-5" />
-                <h3 className="text-xl font-semibold">Live Activity Feed</h3>
+                <h3 className="text-xl font-bold">Live Activity Feed</h3>
             </div>
             <div className="space-y-4 max-h-96 overflow-y-auto pr-2">
                 {groupedActivities.length > 0 ? groupedActivities.map(([date, activities]) => (

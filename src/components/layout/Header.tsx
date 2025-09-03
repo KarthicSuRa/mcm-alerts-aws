@@ -36,76 +36,74 @@ export const Header: React.FC<HeaderProps> = ({
     }, []);
 
     return (
-        <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-border bg-card px-4 sm:px-6 shrink-0">
+        <header className="sticky top-0 z-30 flex h-20 items-center justify-between border-b border-border bg-card px-6 shrink-0">
           {/* Left side: Logo, Title, and mobile menu button */}
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-6">
             <button
-              className="p-2 -ml-2 rounded-md text-muted-foreground lg:hidden"
+              className="p-2 -ml-3 rounded-md text-muted-foreground lg:hidden"
               onClick={() => setIsSidebarOpen(!isSidebarOpen)}
               aria-label="Toggle sidebar"
             >
-              <Icon name="menu" className="h-6 w-6" />
+              <Icon name="menu" className="h-7 w-7" />
             </button>
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-primary/10 rounded-lg">
-                <Icon name="mcmLogo" className="h-6 w-6 text-primary" />
-              </div>
-              <h1 className="text-xl font-bold text-foreground">MCM Alerts</h1>
+            <div className="hidden items-center gap-4 lg:flex">
+               <Icon name="mcmLogo" className="h-9 w-9 text-primary" />
+              <h1 className="text-2xl font-bold text-foreground">MCM Alerts</h1>
             </div>
           </div>
 
           {/* Right side: Actions and User Profile */}
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-5">
             {/* Search */}
             <div className="relative hidden md:block">
-              <Icon name="search" className="w-5 h-5 text-muted-foreground absolute left-3 top-1/2 -translate-y-1/2" />
+              <Icon name="search" className="w-6 h-6 text-muted-foreground absolute left-3.5 top-1/2 -translate-y-1/2" />
               <input
                 type="text"
                 placeholder="Search alerts..."
-                className="w-full pl-10 pr-4 py-2 text-sm rounded-md border border-border bg-transparent shadow-sm focus:border-ring focus:ring-ring"
+                className="w-full pl-12 pr-4 py-2.5 text-base rounded-md border border-border bg-transparent shadow-sm focus:border-ring focus:ring-ring"
               />
             </div>
 
             {/* Theme Toggle */}
             <button
               onClick={themeContext.toggleTheme}
-              className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors p-2 rounded-md"
+              className="flex items-center gap-3 text-muted-foreground hover:text-foreground transition-colors p-3 rounded-md"
               aria-label="Toggle theme"
             >
-              <Icon name={themeContext.theme === 'dark' ? 'sun' : 'moon'} className="w-5 h-5" />
-              <span className="hidden sm:inline text-sm font-medium">Theme</span>
+              <Icon name={themeContext.theme === 'dark' ? 'sun' : 'moon'} className="w-6 h-6" />
+              <span className="hidden sm:inline text-base font-medium">Theme</span>
             </button>
 
             {/* Settings */}
             <button
               onClick={openSettings}
-              className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors p-2 rounded-md"
+              className="flex items-center gap-3 text-muted-foreground hover:text-foreground transition-colors p-3 rounded-md"
               aria-label="Open settings"
             >
-              <Icon name="settings" className="w-5 h-5" />
-              <span className="hidden sm:inline text-sm font-medium">Settings</span>
+              <Icon name="settings" className="w-6 h-6" />
+              <span className="hidden sm:inline text-base font-medium">Settings</span>
             </button>
 
             {/* Profile Dropdown */}
             <div className="relative" ref={profileRef}>
               <button
                 onClick={() => setProfileOpen(prev => !prev)}
-                className="flex items-center gap-2 p-1 rounded-full focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+                className="flex items-center gap-3 p-1.5 rounded-full focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
               >
-                <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center text-primary font-bold">
+                <div className="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center text-primary text-lg font-bold">
                   {session.user.email ? session.user.email[0].toUpperCase() : 'U'}
                 </div>
-                <span className="hidden md:inline text-sm font-medium text-foreground">{session.user.email}</span>
-                <Icon name="chevron-down" className="w-4 h-4 text-muted-foreground hidden md:inline" />
+                <span className="hidden md:inline text-base font-medium text-foreground">{session.user.email}</span>
+                <Icon name="chevron-down" className="w-5 h-5 text-muted-foreground hidden md:inline" />
               </button>
 
               {isProfileOpen && (
-                <div className="absolute right-0 mt-2 w-48 bg-card border border-border rounded-md shadow-lg py-1 z-10">
+                <div className="absolute right-0 mt-2 w-56 bg-card border border-border rounded-md shadow-lg py-2 z-10">
                   <button
                     onClick={onLogout}
-                    className="w-full text-left px-4 py-2 text-sm text-foreground hover:bg-accent flex items-center gap-2"
+                    className="w-full text-left px-4 py-3 text-base text-foreground hover:bg-accent flex items-center gap-3"
                   >
-                    <Icon name="log-out" className="w-4 h-4" />
+                    <Icon name="log-out" className="w-5 h-5" />
                     <span>Logout</span>
                   </button>
                 </div>

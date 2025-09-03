@@ -1,12 +1,13 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Header } from '../components/layout/Header';
-import { Notification, Topic, SystemStatusData, Session, NotificationUpdatePayload } from '../types';
+import { Notification, Topic, SystemStatusData, Session, NotificationUpdatePayload, MonitoredSite } from '../types';
 import { StatCards } from '../components/dashboard/StatCards';
 import { RecentNotifications } from '../components/dashboard/RecentNotifications';
 import { ActivityFeed } from '../components/dashboard/ActivityFeed';
 import ErrorBoundary from '../components/ui/ErrorBoundary';
 import ChartsWidget from '../components/dashboard/ChartsWidget';
-import SiteMap from '../components/monitoring/SiteMap'; // Import the SiteMap component
+import SiteMap from '../components/monitoring/SiteMap';
+import { supabase } from '../lib/supabaseClient';
 
 interface DashboardPageProps {
   notifications: Notification[];
@@ -33,6 +34,36 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
     systemStatus,
     session,
 }) => {
+    const [sites, setSites] = useState<MonitoredSite[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
+
+    useEffect(() => {
+        const fetchSites = async () => {
+            setLoading(true);
+            const { data, error } = await supabase
+                .from('monitored_sites')
+                .select('* , ping_logs (*)');
+
+            if (error) {
+                console.error('Error fetching sites for map:', error);
+                setError('Failed to load site data.');
+            } else if (data) {
+                const sitesWithLatestPing = data.map(site => {
+                    const latestPing = site.ping_logs?.sort((a, b) => new Date(b.checked_at).getTime() - new Date(a.checked_at).getTime())[0];
+                    return { ...site, ping_logs: latestPing ? [latestPing] : [] };
+                });
+                setSites(sitesWithLatestPing);
+            }
+            setLoading(false);
+        };
+
+        fetchSites();
+        const interval = setInterval(fetchSites, 60000);
+
+        return () => clearInterval(interval);
+    }, []);
+
     return (
         <>
             <Header
@@ -61,7 +92,6 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                         {/* Left Column */}
                         <div className="xl:col-span-3 flex flex-col gap-6">
                             <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-4 md:p-6">
-                                <h2 className="text-lg font-semibold mb-4 text-gray-800 dark:text-white">Recent Notifications</h2>
                                <ErrorBoundary>
                                    <RecentNotifications
                                         notifications={notifications}
@@ -73,7 +103,6 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                                </ErrorBoundary>
                            </div>
                            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-4 md:p-6">
-                                <h2 className="text-lg font-semibold mb-4 text-gray-800 dark:text-white">Live Activity Feed</h2>
                                 <ErrorBoundary>
                                     <ActivityFeed notifications={notifications} />
                                 </ErrorBoundary>
@@ -82,16 +111,17 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
 
                         {/* Right Column */}
                         <div className="xl:col-span-2 flex flex-col gap-6">
-                            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-4 md:p-6">
-                                <h2 className="text-lg font-semibold mb-4 text-gray-800 dark:text-white">Site Availability</h2>
-                                <div className="h-64 rounded-lg overflow-hidden">
+                            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm">
+                                <div className="p-4 md:p-6">
+                                    <h2 className="text-xl font-bold text-gray-800 dark:text-white">Site Availability</h2>
+                                </div>
+                                <div className="h-96">
                                     <ErrorBoundary>
-                                        <SiteMap />
+                                        <SiteMap sites={sites} loading={loading} error={error} />
                                     </ErrorBoundary>
                                 </div>
                             </div>
                             <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-4 md:p-6">
-                                <h2 className="text-lg font-semibold mb-4 text-gray-800 dark:text-white">Analytics</h2>
                                 <ErrorBoundary>
                                     <ChartsWidget notifications={notifications} />
                                 </ErrorBoundary>

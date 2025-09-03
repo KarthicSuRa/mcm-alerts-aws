@@ -191,7 +191,7 @@ export const RecentNotifications: React.FC<RecentNotificationsProps> = ({
             {/* Fixed Header - doesn't scroll */}
             <div className="p-4 border-b border-border flex-shrink-0">
                 <div className="flex justify-between items-center mb-4">
-                    <h3 className="text-xl font-semibold">Recent Notifications</h3>
+                    <h3 className="text-xl font-bold">Recent Notifications</h3>
                     <button 
                         onClick={handleClearLogs}
                         className="flex items-center gap-2 text-sm font-semibold text-red-600 hover:text-red-700 transition-colors"

@@ -4,7 +4,7 @@ import SiteList from '../components/monitoring/SiteList';
 import SiteMap from '../components/monitoring/SiteMap';
 import { AddSiteModal } from '../components/monitoring/AddSiteModal';
 import { Button } from '../components/ui/Button';
-import { type Notification, type Topic, type SystemStatusData, type Session, type Site } from '../types';
+import { type Notification, type Topic, type SystemStatusData, type Session, type MonitoredSite } from '../types';
 import { supabase } from '../lib/supabaseClient';
 
 interface SiteMonitoringPageProps {
@@ -29,7 +29,7 @@ export const SiteMonitoringPage: React.FC<SiteMonitoringPageProps> = ({
   systemStatus,
   session,
 }) => {
-  const [sites, setSites] = useState<Site[]>([]);
+  const [sites, setSites] = useState<MonitoredSite[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isAddSiteModalOpen, setIsAddSiteModalOpen] = useState(false);
@@ -38,11 +38,9 @@ export const SiteMonitoringPage: React.FC<SiteMonitoringPageProps> = ({
     setLoading(true);
     setError(null);
     try {
-      // As requested, using the existing 'site-monitoring' edge function
       const { data, error: functionError } = await supabase.functions.invoke('site-monitoring');
 
       if (functionError) {
-        // Handle potential errors from the edge function
         if (functionError.message.includes("not found")) {
             throw new Error("The 'site-monitoring' edge function could not be found. Please ensure it is deployed correctly.");
         }
@@ -53,23 +51,21 @@ export const SiteMonitoringPage: React.FC<SiteMonitoringPageProps> = ({
         console.warn("Edge function returned no site data.");
         setSites([]);
       } else {
-        setSites(data.sites as Site[]);
+        setSites(data.sites as MonitoredSite[]);
       }
 
     } catch (e: any) {
       setError(`Failed to fetch site status: ${e.message}`);
       console.error("Error fetching initial site status:", e);
-      setSites([]); // Clear sites on error
+      setSites([]);
     } finally {
       setLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    // Fetch initial data on component mount
     fetchSiteStatus();
 
-    // Set up real-time subscription for future updates
     const channel = supabase
       .channel('public:ping_logs')
       .on(
@@ -97,7 +93,6 @@ export const SiteMonitoringPage: React.FC<SiteMonitoringPageProps> = ({
           }
       });
 
-    // Clean up the subscription on component unmount
     return () => {
       supabase.removeChannel(channel);
     };
@@ -127,7 +122,7 @@ export const SiteMonitoringPage: React.FC<SiteMonitoringPageProps> = ({
             <Button onClick={() => setIsAddSiteModalOpen(true)}>Add New Site</Button>
           </div>
           
-          <div className="h-96 rounded-lg overflow-hidden mb-6 shadow-sm">
+          <div className="h-[600px] rounded-lg overflow-hidden mb-6 shadow-sm">
             <SiteMap sites={sites} loading={loading} error={error} />
           </div>
           

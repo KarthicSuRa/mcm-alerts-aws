@@ -136,7 +136,7 @@ const ChartsWidget: React.FC<ChartsWidgetProps> = ({ notifications }) => {
     return (
         <div className="bg-gradient-to-br from-card to-secondary/20 p-4 rounded-xl border border-border shadow-lg shadow-black/5">
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-2">
-                <h3 className="text-xl font-semibold">Analytics</h3>
+                <h3 className="text-xl font-bold">Analytics</h3>
                 <div className="flex gap-2">
                     <select 
                         value={timeFilter}

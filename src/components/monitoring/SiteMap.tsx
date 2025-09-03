@@ -1,12 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { MapContainer, TileLayer, CircleMarker, Popup, useMap } from 'react-leaflet';
-import { supabase } from '../../lib/supabaseClient';
 import { MonitoredSite } from '../../types';
 import { LatLngBounds } from 'leaflet';
 
-/**
- * A helper component that automatically adjusts the map's view to fit all sites.
- */
 const AutoFitBounds: React.FC<{ sites: MonitoredSite[] }> = ({ sites }) => {
   const map = useMap();
 
@@ -26,9 +22,6 @@ const AutoFitBounds: React.FC<{ sites: MonitoredSite[] }> = ({ sites }) => {
   return null;
 };
 
-/**
- * A reusable component to render the dots for a list of sites.
- */
 const SiteMarkers: React.FC<{ sites: MonitoredSite[] }> = ({ sites }) => {
   return (
     <>
@@ -70,39 +63,17 @@ const SiteMarkers: React.FC<{ sites: MonitoredSite[] }> = ({ sites }) => {
 
 type ViewType = 'Global' | 'Europe' | 'North America' | 'Asia Pacific';
 
-const SiteMap: React.FC = () => {
-  const [sites, setSites] = useState<MonitoredSite[]>([]);
+interface SiteMapProps {
+  sites: MonitoredSite[];
+  loading: boolean;
+  error: string | null;
+}
+
+const SiteMap: React.FC<SiteMapProps> = ({ sites, loading, error }) => {
   const [activeView, setActiveView] = useState<ViewType>('Global');
-
-  useEffect(() => {
-    const fetchSites = async () => {
-      const { data, error } = await supabase
-        .from('monitored_sites')
-        .select(`
-          *,
-          ping_logs ( id, is_up, response_time_ms, status_code, checked_at )
-        `);
-
-      if (error) {
-        console.error('Error fetching sites for map:', error);
-      } else if (data) {
-        const sitesWithLatestPing = data.map(site => {
-          const latestPing = site.ping_logs?.sort((a, b) => new Date(b.checked_at).getTime() - new Date(a.checked_at).getTime())[0];
-          return { ...site, ping_logs: latestPing ? [latestPing] : [] };
-        });
-        setSites(sitesWithLatestPing);
-      }
-    };
-
-    fetchSites();
-    const interval = setInterval(fetchSites, 60000);
-
-    return () => clearInterval(interval);
-  }, []);
 
   const validSites = sites.filter(site => site.latitude !== null && site.longitude !== null);
 
-  // --- Regional Filtering Logic ---
   const europeSites = validSites.filter(
     site => site.latitude! > 35 && site.latitude! < 70 && site.longitude! > -10 && site.longitude! < 40
   );
@@ -126,9 +97,8 @@ const SiteMap: React.FC = () => {
   const currentView = views.find(v => v.name === activeView)!;
 
   return (
-    <div className="bg-card rounded-lg shadow p-4">
-      {/* --- View Selector Tabs -- */}
-      <div className="flex border-b mb-4">
+    <div className="bg-card rounded-lg shadow p-4 flex flex-col h-full">
+      <div className="flex border-b mb-4 flex-shrink-0">
         {views.map(view => (
           <button
             key={view.name}
@@ -144,20 +114,23 @@ const SiteMap: React.FC = () => {
         ))}
       </div>
 
-      {/* --- Map Display -- */}
-      <div>
-        <MapContainer 
-          key={activeView} // Key is crucial to force React to re-render the map
-          center={currentView.center} 
-          zoom={currentView.zoom} 
-          style={{ height: '500px', width: '100%' }} 
-          className="rounded-lg shadow-md z-0"
-        >
-          <TileLayer url={lightTileUrl} attribution={tileAttribution} />
-          {activeView === 'Global' && <AutoFitBounds sites={currentView.sites} />}
-          <SiteMarkers sites={currentView.sites} />
-        </MapContainer>
-      </div>
+      {loading && <div className="flex items-center justify-center h-full"><p>Loading map...</p></div>}
+      {error && <div className="flex items-center justify-center h-full"><p className="text-red-500">{error}</p></div>}
+      {!loading && !error && (
+        <div className="flex-grow">
+          <MapContainer 
+            key={activeView} 
+            center={currentView.center} 
+            zoom={currentView.zoom} 
+            style={{ height: '100%', width: '100%' }} 
+            className="rounded-lg shadow-md z-0"
+          >
+            <TileLayer url={lightTileUrl} attribution={tileAttribution} />
+            {activeView === 'Global' && <AutoFitBounds sites={currentView.sites} />}
+            <SiteMarkers sites={currentView.sites} />
+          </MapContainer>
+        </div>
+      )}
     </div>
   );
 };
