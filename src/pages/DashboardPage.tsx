@@ -2,6 +2,8 @@ import { Header } from '../components/layout/Header';
 import { Notification, SystemStatusData, Session, MonitoredSite, Topic } from '../types';
 import { StatCards } from '../components/dashboard/StatCards';
 import { RecentNotifications } from '../components/dashboard/RecentNotifications';
+import { ActivityFeed } from '../components/dashboard/ActivityFeed';
+import ChartsWidget from '../components/dashboard/ChartsWidget';
 import SiteMap from '../components/monitoring/SiteMap';
 
 interface DashboardPageProps {
@@ -69,9 +71,15 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                             />
                         </div>
                         <div className="flex flex-col gap-8">
-                             <div className="h-[300px] lg:h-auto lg:flex-grow">
-                                <SiteMap sites={sites} loading={loadingSites} error={sitesError} />
-                            </div>
+                             <ActivityFeed notifications={notifications} />
+                             <ChartsWidget notifications={notifications} />
+                        </div>
+                    </div>
+
+                    <div className="mt-8">
+                        <h2 className="text-2xl font-bold mb-4">Site Monitoring</h2>
+                        <div className="h-[400px] w-full">
+                           <SiteMap sites={sites} loading={loadingSites} error={sitesError} />
                         </div>
                     </div>
                 </div>
