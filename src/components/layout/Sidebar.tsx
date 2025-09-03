@@ -1,5 +1,6 @@
 import React from 'react';
 import { Icon } from '../ui/Icon';
+import { Topic } from '../../types';
 
 interface SidebarProps {
   currentPage: string;
@@ -7,6 +8,7 @@ interface SidebarProps {
   isSidebarOpen: boolean;
   setIsSidebarOpen: (isOpen: boolean) => void;
   onSendTestAlert: () => void;
+  topics: Topic[];
 }
 
 const navItems = [

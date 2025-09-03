@@ -88,7 +88,7 @@ export const AddSiteModal: React.FC<AddSiteModalProps> = ({ isOpen, onClose, onS
           </div>
           {error && <p className="text-red-500 text-sm mb-4">{error}</p>}
           <div className="flex justify-end space-x-4">
-            <Button type="button" variant="outline" onClick={onClose} disabled={loading}>
+            <Button type="button" onClick={onClose} disabled={loading}>
               Cancel
             </Button>
             <Button type="submit" disabled={loading}>

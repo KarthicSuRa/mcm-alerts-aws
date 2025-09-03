@@ -13,7 +13,7 @@ import { SiteMonitoringPage } from './pages/SiteMonitoringPage';
 import { Sidebar } from './components/layout/Sidebar';
 import { SettingsModal } from './components/layout/SettingsModal';
 import { NotificationToast } from './components/ui/NotificationToast';
-import { Theme, type Notification, Severity, NotificationStatus, SystemStatusData, Session, Comment, NotificationUpdatePayload, Topic, Database } from './types';
+import { Theme, type Notification, Severity, NotificationStatus, SystemStatusData, Session, Comment, NotificationUpdatePayload, Topic, Database,  MonitoredSite } from './types';
 import { supabase } from './lib/supabaseClient';
 import { OneSignalService } from './lib/oneSignalService';
 import { ThemeContext } from './contexts/ThemeContext';
@@ -44,6 +44,10 @@ function App() {
   const [topics, setTopics] = useState<Topic[]>([]);
   const [toasts, setToasts] = useState<ExtendedNotification[]>([]);
   const [authLoading, setAuthLoading] = useState(true);
+  const [sites, setSites] = useState<MonitoredSite[]>([]);
+  const [loadingSites, setLoadingSites] = useState(true);
+  const [sitesError, setSitesError] = useState<string | null>(null);
+
 
   const oneSignalService = OneSignalService.getInstance();
   const oneSignalInitialized = useRef(false);
@@ -987,6 +991,32 @@ function App() {
       cleanup();
     };
   }, [session, authLoading, handleNewNotification, setupRealtimeSubscriptions]);
+  // Fetch Monitored Sites
+  useEffect(() => {
+    if (!session) return;
+
+    const fetchSites = async () => {
+        setLoadingSites(true);
+        setSitesError(null);
+        try {
+            const { data, error } = await supabase
+                .from('monitored_sites')
+                .select('*');
+
+            if (error) {
+                throw error;
+            }
+            setSites(data || []);
+        } catch (error: any) {
+            console.error('Error fetching monitored sites:', error);
+            setSitesError('Failed to load site data.');
+        } finally {
+            setLoadingSites(false);
+        }
+    };
+
+    fetchSites();
+  }, [session]);
 
   const subscribeToPush = useCallback(async () => {
     if (!session) return;
@@ -1360,6 +1390,9 @@ function App() {
         topics={topics}
         onUpdateNotification={updateNotification}
         onAddComment={addComment}
+        sites={sites}
+        loadingSites={loadingSites}
+        sitesError={sitesError}
         onClearLogs={handleClearLogs}
       />;
       break;
@@ -1373,7 +1406,7 @@ function App() {
       pageComponent = <HowItWorksPage {...commonProps} />;
       break;
     case 'site-monitoring':
-      pageComponent = <SiteMonitoringPage {...commonProps} />;
+      pageComponent = <SiteMonitoringPage {...commonProps} topics={topics} />;
       break;
     case 'calendar':
       pageComponent = <CalendarPage {...commonProps} />;
@@ -1393,9 +1426,13 @@ function App() {
         topics={topics}
         onUpdateNotification={updateNotification}
         onAddComment={addComment}
+        sites={sites}
+        loadingSites={loadingSites}
+        sitesError={sitesError}
         onClearLogs={handleClearLogs}
       />;
       break;
+
   }
 
   return (
@@ -1408,11 +1445,8 @@ function App() {
               onNavigate={handleNavigate} 
               isSidebarOpen={isSidebarOpen} 
               setIsSidebarOpen={setIsSidebarOpen}
-              sendTestAlert={sendTestAlert}
+              onSendTestAlert={sendTestAlert}
               topics={topics}
-              session={session}
-              onAddTopic={handleAddTopic}
-              onToggleSubscription={handleToggleSubscription}
             />
             <div className="flex-1 flex flex-col w-full">
               {pageComponent}

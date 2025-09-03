@@ -8,7 +8,7 @@ interface HeaderProps {
   isSidebarOpen: boolean;
   setIsSidebarOpen: (open: boolean) => void;
   openSettings: () => void;
-  session: Session;
+  session: Session | null;
   notifications: Notification[];
   systemStatus: SystemStatusData;
   onNavigate: (page: string) => void;
@@ -34,6 +34,10 @@ export const Header: React.FC<HeaderProps> = ({
         document.addEventListener('mousedown', handleClickOutside);
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
+
+    if (!themeContext) {
+      return null;
+    }
 
     return (
         <header className="sticky top-0 z-30 flex h-20 items-center justify-between border-b border-border bg-card px-6 shrink-0">
@@ -85,30 +89,32 @@ export const Header: React.FC<HeaderProps> = ({
             </button>
 
             {/* Profile Dropdown */}
-            <div className="relative" ref={profileRef}>
-              <button
-                onClick={() => setProfileOpen(prev => !prev)}
-                className="flex items-center gap-3 p-1.5 rounded-full focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
-              >
-                <div className="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center text-primary text-lg font-bold">
-                  {session.user.email ? session.user.email[0].toUpperCase() : 'U'}
-                </div>
-                <span className="hidden md:inline text-base font-medium text-foreground">{session.user.email}</span>
-                <Icon name="chevron-down" className="w-5 h-5 text-muted-foreground hidden md:inline" />
-              </button>
+            {session && (
+              <div className="relative" ref={profileRef}>
+                <button
+                  onClick={() => setProfileOpen(prev => !prev)}
+                  className="flex items-center gap-3 p-1.5 rounded-full focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+                >
+                  <div className="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center text-primary text-lg font-bold">
+                    {session.user.email ? session.user.email[0].toUpperCase() : 'U'}
+                  </div>
+                  <span className="hidden md:inline text-base font-medium text-foreground">{session.user.email}</span>
+                  <Icon name="chevron-down" className="w-5 h-5 text-muted-foreground hidden md:inline" />
+                </button>
 
-              {isProfileOpen && (
-                <div className="absolute right-0 mt-2 w-56 bg-card border border-border rounded-md shadow-lg py-2 z-10">
-                  <button
-                    onClick={onLogout}
-                    className="w-full text-left px-4 py-3 text-base text-foreground hover:bg-accent flex items-center gap-3"
-                  >
-                    <Icon name="log-out" className="w-5 h-5" />
-                    <span>Logout</span>
-                  </button>
-                </div>
-              )}
-            </div>
+                {isProfileOpen && (
+                  <div className="absolute right-0 mt-2 w-56 bg-card border border-border rounded-md shadow-lg py-2 z-10">
+                    <button
+                      onClick={onLogout}
+                      className="w-full text-left px-4 py-3 text-base text-foreground hover:bg-accent flex items-center gap-3"
+                    >
+                      <Icon name="log-out" className="w-5 h-5" />
+                      <span>Logout</span>
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </header>
     );

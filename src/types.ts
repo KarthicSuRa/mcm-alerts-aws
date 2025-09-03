@@ -184,6 +184,77 @@ export interface Database {
           }
         ]
       }
+      monitored_sites: {
+        Row: {
+          id: string;
+          name: string;
+          url: string;
+          region: string;
+          created_at: string;
+          updated_at: string;
+          latitude: number | null;
+          longitude: number | null;
+        }
+        Insert: {
+          id?: string;
+          name: string;
+          url: string;
+          region?: string;
+          created_at?: string;
+          updated_at?: string;
+          latitude?: number | null;
+          longitude?: number | null;
+        }
+        Update: {
+          id?: string;
+          name?: string;
+          url?: string;
+          region?: string;
+          created_at?: string;
+          updated_at?: string;
+          latitude?: number | null;
+          longitude?: number | null;
+        }
+        Relationships: []
+      }
+      ping_logs: {
+        Row: {
+            id: number;
+            site_id: string;
+            is_up: boolean;
+            response_time_ms: number;
+            status_code: number;
+            status_text: string;
+            checked_at: string;
+        }
+        Insert: {
+            id?: number;
+            site_id: string;
+            is_up: boolean;
+            response_time_ms: number;
+            status_code: number;
+            status_text: string;
+            checked_at?: string;
+        }
+        Update: {
+            id?: number;
+            site_id?: string;
+            is_up?: boolean;
+            response_time_ms?: number;
+            status_code?: number;
+            status_text?: string;
+            checked_at?: string;
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ping_logs_site_id_fkey",
+            columns: ["site_id"],
+            isOneToOne: false,
+            referencedRelation: "monitored_sites",
+            referencedColumns: ["id"]
+          }
+        ]
+      }
     }
     Views: {
       [_ in never]: never
@@ -233,6 +304,8 @@ export interface Notification {
   topic_id: string | null;
   created_at: string;
   updated_at: string;
+  acknowledgedAt?: string;
+  resolvedAt?: string;
 }
 
 export type NotificationUpdatePayload = Database['public']['Tables']['notifications']['Update'];
@@ -287,3 +360,10 @@ export interface Category {
   name: string;
   color: string;
 }
+
+export type PingLog = Database['public']['Tables']['ping_logs']['Row'];
+
+export type MonitoredSite = Database['public']['Tables']['monitored_sites']['Row'] & {
+  ping_logs?: PingLog[];
+  latest_ping?: PingLog;
+};

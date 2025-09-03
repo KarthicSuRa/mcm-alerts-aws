@@ -1,130 +1,76 @@
-import React, { useState, useEffect } from 'react';
 import { Header } from '../components/layout/Header';
-import { Notification, Topic, SystemStatusData, Session, NotificationUpdatePayload, MonitoredSite } from '../types';
+import { Notification, SystemStatusData, Session, MonitoredSite, Topic } from '../types';
 import { StatCards } from '../components/dashboard/StatCards';
 import { RecentNotifications } from '../components/dashboard/RecentNotifications';
-import { ActivityFeed } from '../components/dashboard/ActivityFeed';
-import ErrorBoundary from '../components/ui/ErrorBoundary';
-import ChartsWidget from '../components/dashboard/ChartsWidget';
 import SiteMap from '../components/monitoring/SiteMap';
-import { supabase } from '../lib/supabaseClient';
 
 interface DashboardPageProps {
   notifications: Notification[];
-  topics: Topic[];
-  onUpdateNotification: (notificationId: string, updates: NotificationUpdatePayload) => Promise<void>;
-  onAddComment: (notificationId: string, text: string) => Promise<void>;
   onNavigate: (page: string) => void;
   onLogout: () => void;
+  isSidebarOpen: boolean;
   setIsSidebarOpen: (open: boolean) => void;
   openSettings: () => void;
   systemStatus: SystemStatusData;
-  session: Session;
+  session: Session | null;
+  sites: MonitoredSite[];
+  loadingSites: boolean;
+  sitesError: string | null;
+  onUpdateNotification: (notificationId: string, updates: any) => Promise<void>;
+  onAddComment: (notificationId: string, text: string) => Promise<void>;
+  topics: Topic[];
+  onClearLogs: () => Promise<void>;
 }
 
-export const DashboardPage: React.FC<DashboardPageProps> = ({
-    notifications,
-    topics,
+export const DashboardPage: React.FC<DashboardPageProps> = ({ 
+    notifications, 
+    onNavigate, 
+    onLogout, 
+    isSidebarOpen, 
+    setIsSidebarOpen, 
+    openSettings, 
+    systemStatus, 
+    session,
+    sites,
+    loadingSites,
+    sitesError,
     onUpdateNotification,
     onAddComment,
-    onNavigate,
-    onLogout,
-    setIsSidebarOpen,
-    openSettings,
-    systemStatus,
-    session,
+    topics,
+    onClearLogs,
 }) => {
-    const [sites, setSites] = useState<MonitoredSite[]>([]);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState<string | null>(null);
-
-    useEffect(() => {
-        const fetchSites = async () => {
-            setLoading(true);
-            const { data, error } = await supabase
-                .from('monitored_sites')
-                .select('* , ping_logs (*)');
-
-            if (error) {
-                console.error('Error fetching sites for map:', error);
-                setError('Failed to load site data.');
-            } else if (data) {
-                const sitesWithLatestPing = data.map(site => {
-                    const latestPing = site.ping_logs?.sort((a, b) => new Date(b.checked_at).getTime() - new Date(a.checked_at).getTime())[0];
-                    return { ...site, ping_logs: latestPing ? [latestPing] : [] };
-                });
-                setSites(sitesWithLatestPing);
-            }
-            setLoading(false);
-        };
-
-        fetchSites();
-        const interval = setInterval(fetchSites, 60000);
-
-        return () => clearInterval(interval);
-    }, []);
-
+    
     return (
         <>
-            <Header
-                onNavigate={onNavigate}
-                onLogout={onLogout}
-                notifications={notifications}
-                setIsSidebarOpen={setIsSidebarOpen}
-                openSettings={openSettings}
-                systemStatus={systemStatus}
-                session={session}
+            <Header 
+                onNavigate={onNavigate} 
+                onLogout={onLogout} 
+                notifications={notifications} 
+                isSidebarOpen={isSidebarOpen} 
+                setIsSidebarOpen={setIsSidebarOpen} 
+                openSettings={openSettings} 
+                systemStatus={systemStatus} 
+                session={session} 
             />
-            <main className="flex-1 overflow-y-auto lg:ml-72 bg-gray-50 dark:bg-gray-900">
+            <main className="flex-1 overflow-y-auto bg-background lg:ml-72">
                 <div className="max-w-screen-2xl mx-auto p-4 sm:p-6 lg:p-8">
-                    <div className="mb-6">
-                        <h1 className="text-2xl font-bold text-gray-800 dark:text-white">My Dashboard</h1>
-                        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                            Welcome back, {session.user.email}. Here's an overview of your system.
-                        </p>
-                    </div>
-
-                    <ErrorBoundary>
-                        <StatCards notifications={notifications} />
-                    </ErrorBoundary>
+                    <h1 className="text-4xl font-bold mb-6">Dashboard</h1>
+                    <StatCards notifications={notifications} sites={sites} />
                     
-                    <div className="grid grid-cols-1 xl:grid-cols-5 gap-6 mt-6 items-start">
-                        {/* Left Column */}
-                        <div className="xl:col-span-3 flex flex-col gap-6">
-                            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-4 md:p-6">
-                               <ErrorBoundary>
-                                   <RecentNotifications
-                                        notifications={notifications}
-                                        onUpdateNotification={onUpdateNotification}
-                                        onAddComment={onAddComment}
-                                        topics={topics}
-                                        session={session}
-                                    />
-                               </ErrorBoundary>
-                           </div>
-                           <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-4 md:p-6">
-                                <ErrorBoundary>
-                                    <ActivityFeed notifications={notifications} />
-                                </ErrorBoundary>
-                            </div>
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mt-8">
+                        <div className="lg:col-span-2">
+                            <RecentNotifications 
+                                notifications={notifications.slice(0, 10)} 
+                                onUpdateNotification={onUpdateNotification}
+                                onAddComment={onAddComment}
+                                onClearLogs={onClearLogs}
+                                topics={topics}
+                                session={session}
+                            />
                         </div>
-
-                        {/* Right Column */}
-                        <div className="xl:col-span-2 flex flex-col gap-6">
-                            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm">
-                                <div className="p-4 md:p-6">
-                                    <h2 className="text-xl font-bold text-gray-800 dark:text-white">Site Availability</h2>
-                                </div>
-                                <div className="h-96">
-                                    <ErrorBoundary>
-                                        <SiteMap sites={sites} loading={loading} error={error} />
-                                    </ErrorBoundary>
-                                </div>
-                            </div>
-                            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-4 md:p-6">
-                                <ErrorBoundary>
-                                    <ChartsWidget notifications={notifications} />
-                                </ErrorBoundary>
+                        <div className="flex flex-col gap-8">
+                             <div className="h-[300px] lg:h-auto lg:flex-grow">
+                                <SiteMap sites={sites} loading={loadingSites} error={sitesError} />
                             </div>
                         </div>
                     </div>

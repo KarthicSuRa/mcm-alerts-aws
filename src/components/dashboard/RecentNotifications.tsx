@@ -10,7 +10,7 @@ interface RecentNotificationsProps {
     onAddComment: (notificationId: string, text: string) => Promise<void>;
     onClearLogs: () => Promise<void>;
     topics: Topic[];
-    session: Session;
+    session: Session | null;
 }
 
 export const RecentNotifications: React.FC<RecentNotificationsProps> = ({ 
@@ -185,6 +185,10 @@ export const RecentNotifications: React.FC<RecentNotificationsProps> = ({
             }, 1000);
         }
     };
+
+    if (!session) {
+        return <div>Loading...</div>
+    }
 
     return (
         <div className="bg-gradient-to-br from-card to-secondary/20 rounded-xl border border-border shadow-lg shadow-black/5 h-full max-h-[calc(100vh-8rem)] flex flex-col">

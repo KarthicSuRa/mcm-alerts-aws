@@ -2,50 +2,14 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import { MonitoredSite } from '../../types';
 
-const SiteList: React.FC = () => {
-  const [sites, setSites] = useState<MonitoredSite[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+interface SiteListProps {
+  sites: MonitoredSite[];
+  loading: boolean;
+  error: string | null;
+  refetch: () => void;
+}
 
-  useEffect(() => {
-    const fetchSites = async () => {
-      setLoading(true);
-      setError(null);
-
-      try {
-        const { data, error } = await supabase
-          .from('monitored_sites')
-          .select(`
-            id, name, url, is_paused,
-            ping_logs ( id, is_up, response_time_ms, status_code, checked_at )
-          `)
-          .order('name', { ascending: true });
-
-        if (error) throw error;
-
-        const sitesWithLatestPing = data?.map(site => {
-          const latestPing = site.ping_logs?.sort((a, b) => new Date(b.checked_at).getTime() - new Date(a.checked_at).getTime())[0];
-          return { ...site, latest_ping: latestPing };
-        }) || [];
-
-        setSites(sitesWithLatestPing);
-
-      } catch (err: any) {
-        console.error("Error fetching sites:", err);
-        setError(`Failed to load sites: ${err.message}`);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchSites();
-
-    // Set up a polling interval to refresh the data every minute
-    const interval = setInterval(fetchSites, 60000);
-
-    return () => clearInterval(interval);
-  }, []);
-
+const SiteList: React.FC<SiteListProps> = ({ sites, loading, error, refetch }) => {
   if (loading) {
     return <p className="p-4 text-center text-muted-foreground">Loading sites...</p>;
   }
