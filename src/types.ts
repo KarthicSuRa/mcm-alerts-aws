@@ -330,6 +330,9 @@ export interface AuditLog {
 }
 
 export interface SystemStatusData {
+  status: 'operational' | 'degraded_performance' | 'major_outage' | 'unknown';
+  message: string;
+  last_updated: string;
   service: 'Ready' | 'Error';
   database: 'Connected' | 'Disconnected';
   push: 'Supported' | 'Unsupported' | 'OneSignal';
@@ -364,6 +367,8 @@ export interface Category {
 export type PingLog = Database['public']['Tables']['ping_logs']['Row'];
 
 export type MonitoredSite = Database['public']['Tables']['monitored_sites']['Row'] & {
+  status?: 'online' | 'offline' | 'unknown';
   ping_logs?: PingLog[];
   latest_ping?: PingLog;
+  last_checked?: string;
 };

@@ -2,6 +2,7 @@ import * as React from 'react';
 import { Icon } from '../ui/Icon';
 import { ThemeContext } from '../../contexts/ThemeContext';
 import { Session, Notification, SystemStatusData } from '../../types';
+import { SystemStatusPopover } from './SystemStatusPopover';
 
 interface HeaderProps {
   onLogout: () => void;
@@ -20,15 +21,21 @@ export const Header: React.FC<HeaderProps> = ({
   setIsSidebarOpen, 
   openSettings, 
   session,
+  systemStatus
 }) => {
     const themeContext = React.useContext(ThemeContext);
     const [isProfileOpen, setProfileOpen] = React.useState(false);
+    const [isStatusOpen, setStatusOpen] = React.useState(false);
     const profileRef = React.useRef<HTMLDivElement>(null);
+    const statusRef = React.useRef<HTMLDivElement>(null);
 
     React.useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
             if (profileRef.current && !profileRef.current.contains(event.target as Node)) {
                 setProfileOpen(false);
+            }
+            if (statusRef.current && !statusRef.current.contains(event.target as Node)) {
+                setStatusOpen(false);
             }
         };
         document.addEventListener('mousedown', handleClickOutside);
@@ -38,6 +45,16 @@ export const Header: React.FC<HeaderProps> = ({
     if (!themeContext) {
       return null;
     }
+    
+    const statusIndicator = {
+        operational: { color: 'bg-green-500', text: 'All systems operational' },
+        degraded_performance: { color: 'bg-yellow-500', text: 'Degraded performance' },
+        major_outage: { color: 'bg-red-500', text: 'Major outage' },
+        unknown: { color: 'bg-gray-500', text: 'Status unknown' },
+    };
+
+    const currentStatus = systemStatus?.status || 'unknown';
+    const statusInfo = statusIndicator[currentStatus];
 
     return (
         <header className="sticky top-0 z-30 flex h-20 items-center justify-between border-b border-border bg-card px-6 shrink-0">
@@ -66,6 +83,21 @@ export const Header: React.FC<HeaderProps> = ({
                 placeholder="Search alerts..."
                 className="w-full pl-12 pr-4 py-2.5 text-base rounded-md border border-border bg-transparent shadow-sm focus:border-ring focus:ring-ring"
               />
+            </div>
+
+            {/* System Status Popover */}
+            <div className="relative hidden lg:flex" ref={statusRef}>
+                 <button
+                    onClick={() => setStatusOpen(prev => !prev)}
+                    className="flex items-center gap-3 text-muted-foreground hover:text-foreground transition-colors p-3 rounded-md"
+                    aria-label="System Status"
+                  >
+                    <div className={`w-3 h-3 rounded-full transition-colors ${statusInfo.color}`}></div>
+                    <span className="text-sm font-medium">
+                        System Status
+                    </span>
+                </button>
+                {isStatusOpen && <SystemStatusPopover status={systemStatus} />}
             </div>
 
             {/* Theme Toggle */}

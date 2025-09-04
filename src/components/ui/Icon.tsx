@@ -30,7 +30,7 @@ const icons: { [key: string]: React.ReactNode } = {
   'arrow-left': <><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></>,
   menu: <><path d="M4 6h16M4 12h16M4 18h16" /></>,
   filter: <path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z" fill="currentColor" strokeWidth="0" />,
-  pieChart: <><path d="M21.21 15.89A10 10 0 1 1 8 2.83" fill="currentColor" strokeWidth="0" /><path d="M22 12A10 10 0 0 0 12 2v10z" fill="currentColor" strokeWidth="0" /></>,
+  'analytics-pie': <><path d="M21.21 15.89A10 10 0 1 1 8 2.83" /><path d="M22 12A10 10 0 0 0 12 2v10z" /></>,
   lineChart: <><path d="M3 3v18h18" /><path d="m19 9-5 5-4-4-3 3" /></>,
   messageSquare: <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />,
   comment: <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" fill="currentColor" strokeWidth="0" />,

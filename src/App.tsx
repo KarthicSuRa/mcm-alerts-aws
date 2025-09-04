@@ -9,6 +9,7 @@ import { AuditLogsPage } from './pages/AuditLogsPage';
 import { HowItWorksPage } from './pages/HowItWorksPage';
 import { TopicManagerPage } from './pages/TopicManagerPage';
 import { CalendarPage } from './pages/CalendarPage';
+import { AnalyticsPage } from './pages/AnalyticsPage';
 import { SiteMonitoringPage } from './pages/SiteMonitoringPage';
 import { Sidebar } from './components/layout/Sidebar';
 import { SettingsModal } from './components/layout/SettingsModal';
@@ -70,6 +71,9 @@ function App() {
   }, []);
 
   const systemStatus: SystemStatusData = useMemo(() => ({
+    status: 'operational',
+    message: 'All systems normal',
+    last_updated: new Date().toISOString(),
     service: 'Ready',
     database: 'Connected',
     push: 'OneSignal',
@@ -1410,7 +1414,10 @@ function App() {
       break;
     case 'calendar':
       pageComponent = <CalendarPage {...commonProps} />;
-      break;  
+      break;
+    case 'analytics':
+      pageComponent = <AnalyticsPage {...commonProps} topics={topics} />;
+      break;
     case 'topic-manager':
       pageComponent = <TopicManagerPage
         {...commonProps}

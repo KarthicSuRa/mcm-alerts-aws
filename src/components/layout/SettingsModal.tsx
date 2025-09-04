@@ -58,8 +58,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
     if (!isOpen) return null;
 
-    // Replace the handleRequestNotificationPermission function in SettingsModal with this:
-
     const handleRequestNotificationPermission = async () => {
         console.log('🔔 Enable button clicked', { permission });
         
@@ -74,13 +72,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         }
         
         try {
-            // Request permission first
             const newPermission = await window.Notification.requestPermission();
             console.log('Permission result:', newPermission);
             setPermission(newPermission);
             
             if (newPermission === "granted") {
-                // Now subscribe to push notifications
                 onSubscribeToPush();
             } else {
                 console.log('Permission not granted:', newPermission);
@@ -135,7 +131,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     }
 
     return (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" onClick={onClose}>
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[2000] flex items-center justify-center p-4" onClick={onClose}>
             <div className="bg-card w-full max-w-lg rounded-2xl shadow-xl border border-border" onClick={e => e.stopPropagation()}>
                 <div className="flex items-center justify-between p-6 border-b border-border">
                     <h2 className="text-xl font-bold">Application Settings</h2>
@@ -144,7 +140,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     </button>
                 </div>
                 <div className="p-6 space-y-6">
-                    {/* Push Notifications */}
                     <div className="flex items-center justify-between">
                         <div>
                             <p className="font-semibold">Desktop Push Alerts</p>
@@ -153,7 +148,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         {getPushComponent()}
                     </div>
 
-                    {/* Sound Alerts */}
                     <div className="flex items-center justify-between">
                         <div>
                            <p className="font-semibold">Notification Sounds</p>
@@ -162,7 +156,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         <ToggleSwitch enabled={soundEnabled} onChange={setSoundEnabled} />
                     </div>
 
-                    {/* Snooze Alerts */}
                     <div>
                         <p className="font-semibold">Snooze All Alerts</p>
                         <p className="text-sm text-muted-foreground mb-3">Temporarily pause all incoming notifications.</p>
