@@ -1,6 +1,5 @@
-import React, { useContext } from 'react';
+import React from 'react';
 import { Icon } from '../components/ui/Icon';
-import { ThemeContext } from '../contexts/ThemeContext';
 
 interface LandingPageProps {
     onNavigate: (page: string) => void;
@@ -18,7 +17,6 @@ const Feature: React.FC<{ icon: string; title: string; children: React.ReactNode
 
 
 export const LandingPage: React.FC<LandingPageProps> = ({ onNavigate }) => {
-    const { theme, toggleTheme } = useContext(ThemeContext);
 
     return (
         <div className="bg-white text-gray-800 font-sans leading-normal relative overflow-hidden">
