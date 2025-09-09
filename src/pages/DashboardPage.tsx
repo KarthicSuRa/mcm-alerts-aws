@@ -156,13 +156,15 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                     
                     <div className="grid grid-cols-1 lg:grid-cols-5 gap-8 mt-8">
                         <div className="lg:col-span-3 flex flex-col gap-8 order-2 lg:order-1">
-                            <RecentNotifications 
-                                notifications={notifications} 
-                                onUpdateNotification={onUpdateNotification}
-                                onAddComment={onAddComment}
-                                topics={topics}
-                                session={session}
-                            />
+                            {session && (
+                                <RecentNotifications 
+                                    notifications={notifications} 
+                                    onUpdateNotification={onUpdateNotification}
+                                    onAddComment={onAddComment}
+                                    topics={topics}
+                                    session={session}
+                                />
+                            )}
                             <ActivityFeed notifications={notifications} />
                         </div>
                         <div className="lg:col-span-2 flex flex-col gap-8 order-1 lg:order-2">
