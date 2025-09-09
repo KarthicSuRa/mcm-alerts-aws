@@ -134,14 +134,14 @@ const ChartsWidget: React.FC<ChartsWidgetProps> = ({ notifications }) => {
     }
 
     return (
-        <div className="bg-gradient-to-br from-card to-secondary/20 p-4 rounded-xl border border-border shadow-lg shadow-black/5">
+        <div className="bg-card p-4 rounded-xl border border-border shadow-sm">
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-2">
-                <h3 className="text-xl font-bold">Analytics</h3>
-                <div className="flex gap-2">
+                <h3 className="text-lg sm:text-xl font-bold">Analytics</h3>
+                <div className="flex gap-2 w-full sm:w-auto">
                     <select 
                         value={timeFilter}
                         onChange={(e) => setTimeFilter(e.target.value as TimeFilter)}
-                        className="text-xs rounded-md border-border shadow-sm focus:border-ring focus:ring-ring bg-transparent"
+                        className="text-sm rounded-md border-border shadow-sm focus:border-ring focus:ring-ring bg-background flex-grow"
                     >
                         <option value="all">All Time</option>
                         <option value="7d">Last 7d</option>
@@ -150,7 +150,7 @@ const ChartsWidget: React.FC<ChartsWidgetProps> = ({ notifications }) => {
                     <select 
                         value={chartType}
                         onChange={(e) => setChartType(e.target.value as ChartType)}
-                        className="text-xs rounded-md border-border shadow-sm focus:border-ring focus:ring-ring bg-transparent"
+                        className="text-sm rounded-md border-border shadow-sm focus:border-ring focus:ring-ring bg-background flex-grow"
                     >
                         <option value="bar">By Status</option>
                         <option value="pie">By Severity</option>
@@ -158,7 +158,7 @@ const ChartsWidget: React.FC<ChartsWidgetProps> = ({ notifications }) => {
                     </select>
                 </div>
             </div>
-            <div className="h-64">
+            <div className="h-64 sm:h-72">
                  {chartData.time.length > 0 || chartData.severity.length > 0 || chartData.status.some(s => s.count > 0) ? renderChart() : 
                  <div className="flex items-center justify-center h-full text-muted-foreground">No data for selected period</div>}
             </div>

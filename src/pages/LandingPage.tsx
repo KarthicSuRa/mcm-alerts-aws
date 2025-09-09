@@ -1,238 +1,117 @@
-import React, { useState, useEffect } from 'react';
+import React, { useContext } from 'react';
 import { Icon } from '../components/ui/Icon';
+import { ThemeContext } from '../contexts/ThemeContext';
 
 interface LandingPageProps {
-  onNavigate: (page: 'login') => void;
+    onNavigate: (page: string) => void;
 }
 
-const features = [
-  {
-    icon: 'monitor',
-    title: 'Centralized Dashboard',
-    description: 'Get a bird\'s-eye view of all system alerts in one place. Filter, sort, and manage notifications efficiently with real-time updates.',
-  },
-  {
-    icon: 'bell',
-    title: 'Multi-Channel Alerts',
-    description: 'Receive critical alerts via push notifications, email, SMS, and sound alerts, ensuring you never miss an important event.',
-  },
-  {
-    icon: 'zap',
-    title: 'Flexible API',
-    description: 'Integrate with any monitoring system, from custom scripts to enterprise tools, using our simple yet powerful REST API.',
-  },
-  {
-    icon: 'messageSquare',
-    title: 'Team Collaboration',
-    description: 'Comment on alerts, assign responsibilities, track resolution progress, and maintain clear communication channels.',
-  },
-  {
-    icon: 'logs',
-    title: 'Comprehensive Audit Logs',
-    description: 'Maintain a complete and searchable history of all alerts, actions, and responses for compliance and performance review.',
-  },
-  {
-    icon: 'settings',
-    title: 'Advanced Controls',
-    description: 'Customize your notification experience with granular settings, smart filtering, snoozing capabilities, and priority levels.',
-  },
-];
+const Feature: React.FC<{ icon: string; title: string; children: React.ReactNode }> = ({ icon, title, children }) => (
+    <div className="text-center p-6">
+        <div className="flex items-center justify-center h-16 w-16 rounded-full bg-blue-100 mx-auto mb-5">
+            <Icon name={icon} className="w-8 h-8 text-blue-600" />
+        </div>
+        <h3 className="text-xl font-bold text-gray-900 mb-2">{title}</h3>
+        <p className="text-gray-600 leading-relaxed">{children}</p>
+    </div>
+);
+
 
 export const LandingPage: React.FC<LandingPageProps> = ({ onNavigate }) => {
-  const [isVisible, setIsVisible] = useState(false);
-  const [activeFeature, setActiveFeature] = useState(0);
+    const { theme, toggleTheme } = useContext(ThemeContext);
 
-  useEffect(() => {
-    setIsVisible(true);
-    const interval = setInterval(() => {
-      setActiveFeature(prev => (prev + 1) % features.length);
-    }, 3000);
-    return () => clearInterval(interval);
-  }, []);
+    return (
+        <div className="bg-white text-gray-800 font-sans leading-normal relative overflow-hidden">
+            <div className="absolute top-0 -left-40 w-96 h-96 bg-blue-100/50 rounded-full filter blur-3xl opacity-50 animate-pulse"></div>
+            <div className="absolute top-1/2 -right-40 w-96 h-96 bg-indigo-100/50 rounded-full filter blur-3xl opacity-50 animate-pulse animation-delay-2000"></div>
 
-  return (
-    <div className="bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-slate-100 min-h-screen">
-      {/* Header */}
-      <header className="fixed top-0 left-0 right-0 z-50 px-4 lg:px-6 h-16 flex items-center justify-between bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border-b border-slate-200/50 dark:border-slate-700/50 shadow-sm">
-        <div className="flex items-center space-x-2">
-          <div className="w-8 h-8 bg-gradient-to-br from-blue-600 to-purple-700 rounded-lg flex items-center justify-center">
-            <Icon name="mcmLogo" className="w-5 h-5 text-white" />
-          </div>
-          <span className="text-xl font-bold bg-gradient-to-r from-blue-600 to-purple-700 bg-clip-text text-transparent">MCM Alerts</span>
-        </div>
-        <nav className="flex gap-2 sm:gap-4 items-center">
-          <button 
-            onClick={() => onNavigate('login')} 
-            className="px-4 py-2 text-sm font-medium text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white transition-colors"
-          >
-            Sign In
-          </button>
-          <button 
-            onClick={() => onNavigate('login')} 
-            className="inline-flex h-10 items-center justify-center rounded-lg bg-gradient-to-r from-blue-600 to-purple-700 px-6 text-sm font-semibold text-white shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 transition-all duration-200"
-          >
-            Get Started
-            <span className="ml-2">→</span>
-          </button>
-        </nav>
-      </header>
-
-      <main className="flex-1">
-        {/* Hero Section */}
-        <section className="relative pt-20 pb-16 md:pt-32 md:pb-24 overflow-hidden">
-          {/* Background Elements */}
-          <div className="absolute inset-0 bg-gradient-to-br from-blue-50/50 via-white to-purple-50/50 dark:from-slate-900 dark:via-slate-800 dark:to-slate-900"></div>
-          <div className="absolute top-0 right-0 -translate-y-12 translate-x-12 w-96 h-96 bg-gradient-to-br from-blue-400/20 to-purple-600/20 rounded-full blur-3xl"></div>
-          <div className="absolute bottom-0 left-0 translate-y-12 -translate-x-12 w-96 h-96 bg-gradient-to-tr from-purple-400/20 to-pink-600/20 rounded-full blur-3xl"></div>
-          
-          <div className="relative container mx-auto px-4 md:px-6">
-            <div className={`flex flex-col items-center space-y-8 text-center transition-all duration-1000 ${isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'}`}>
-              <div className="space-y-4">
-                <h1 className="text-4xl font-bold tracking-tight sm:text-5xl md:text-6xl lg:text-7xl">
-                  <span className="block">Monitor, Alert, Resolve.</span>
-                  <span className="block bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 bg-clip-text text-transparent">
-                    The All-in-One Platform.
-                  </span>
-                </h1>
-                <p className="max-w-2xl mx-auto text-lg md:text-xl text-slate-600 dark:text-slate-300 leading-relaxed">
-                  MCM Alerts provides a robust, centralized system for instant event notification and incident management, designed for teams that demand reliability and speed.
-                </p>
-              </div>
-              
-              <div className="flex flex-col sm:flex-row gap-4">
-                <button 
-                  onClick={() => onNavigate('login')} 
-                  className="inline-flex h-12 items-center justify-center rounded-lg bg-gradient-to-r from-blue-600 to-purple-700 px-8 text-base font-semibold text-white shadow-lg hover:shadow-xl transform hover:-translate-y-1 transition-all duration-200"
-                >
-                  Get Started
-                  <span className="ml-2">→</span>
-                </button>
-        
-              </div>
-
-              {/* Trust Indicators */}
-              <div className="pt-12">
-      
-                <div className="flex justify-center items-center gap-8 flex-wrap opacity-60">
-                  {['monitor', 'shield', 'dashboard', 'zap', 'bell'].map((iconName, i) => (
-                    <div key={i} className="w-12 h-12 bg-slate-200 dark:bg-slate-700 rounded-lg flex items-center justify-center">
-                      <Icon name={iconName} className="w-6 h-6 text-slate-500 dark:text-slate-400" />
+            <div className="relative z-10">
+                {/* Header */}
+                <header className="bg-white/80 backdrop-blur-sm fixed top-0 left-0 right-0">
+                    <div className="container mx-auto px-4 sm:px-6 lg:px-8">
+                        <div className="flex items-center justify-between h-24">
+                            <div className="flex items-center space-x-3">
+                                <div className="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center">
+                                    <Icon name="mcmLogo" className="w-7 h-7 text-white" />
+                                </div>
+                                <span className="text-2xl font-bold text-gray-900">MCM Alerts</span>
+                            </div>
+                            <nav className="hidden lg:flex items-center space-x-8">
+                                <a href="#features" className="text-gray-600 hover:text-blue-600 transition-colors duration-300 font-medium">Features</a>
+                            </nav>
+                            <div className="flex items-center space-x-3">
+                                <button onClick={() => onNavigate('login')} className="text-blue-600 hover:text-blue-700 transition-colors font-semibold px-5 py-2.5 rounded-lg text-sm border border-gray-300 hover:border-blue-600">
+                                    Log In
+                                </button>
+                                <button onClick={() => onNavigate('login')} className="bg-blue-600 text-white font-bold px-5 py-2.5 rounded-lg text-sm hover:bg-blue-700 transition-colors">
+                                    Get Started
+                                </button>
+                            </div>
+                        </div>
                     </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
-        </section>
+                </header>
 
-        {/* Features Section */}
-        <section className="py-16 md:py-24 bg-white dark:bg-slate-800/50">
-          <div className="container mx-auto px-4 md:px-6">
-            <div className="text-center mb-16">
-              <h2 className="text-3xl md:text-4xl font-bold mb-4">
-                Why Choose MCM Alerts?
-              </h2>
-              <p className="max-w-2xl mx-auto text-lg text-slate-600 dark:text-slate-300">
-                Powerful features designed for clarity, speed, and immediate action when it matters most.
-              </p>
-            </div>
-            
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-              {features.map((feature, index) => (
-                <div 
-                  key={feature.title} 
-                  className={`group p-6 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:shadow-xl hover:-translate-y-2 transition-all duration-300 ${activeFeature === index ? 'ring-2 ring-blue-500 shadow-lg' : ''}`}
-                  onMouseEnter={() => setActiveFeature(index)}
-                >
-                  <div className="flex items-center space-x-4 mb-4">
-                    <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center group-hover:scale-110 transition-transform duration-200">
-                      <Icon name={feature.icon} className="w-6 h-6 text-white" />
+                <main className="pt-24">
+                    {/* Hero Section */}
+                    <section className="px-4 pt-20 pb-28 text-center bg-gray-50/80 backdrop-blur-sm">
+                        <div className="container mx-auto">
+                            <h1 className="text-5xl md:text-7xl font-extrabold text-gray-900 tracking-tight mb-5 leading-tight">
+                                Monitor, Alert, Resolve. <br/> The All-in-One Platform.
+                            </h1>
+                            <p className="max-w-3xl mx-auto text-lg text-gray-600 mb-10">
+                                MCM Alerts provides a robust, centralized system for instant event notification and incident management, designed for teams that demand reliability and speed.
+                            </p>
+                            
+                            <button 
+                                onClick={() => onNavigate('login')}
+                                className="bg-blue-600 text-white font-bold px-8 py-4 rounded-lg text-lg hover:bg-blue-700 transition-colors"
+                            >
+                                Get Started
+                            </button>
+                        </div>
+                    </section>
+
+                    {/* Features Section */}
+                    <section id="features" className="px-4 py-24 bg-white/80 backdrop-blur-sm">
+                        <div className="container mx-auto">
+                            <div className="text-center mb-16 max-w-3xl mx-auto">
+                                <h2 className="text-4xl md:text-5xl font-bold text-gray-900">Why Choose MCM Alerts?</h2>
+                                <p className="max-w-2xl mx-auto text-gray-600 mt-5">Powerful features designed for clarity, speed, and immediate action when it matters most.</p>
+                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-12">
+                               <Feature icon="grid" title="Centralized Dashboard">
+                                    Get a bird's-eye view of all system alerts in one place. Filter, sort, and manage notifications efficiently with real-time updates.
+                                </Feature>
+                                <Feature icon="bell" title="Multi-Channel Alerts">
+                                    Receive critical alerts via push notifications, email, SMS, and sound alerts, ensuring you never miss an important event.
+                                </Feature>
+                                <Feature icon="messageSquare" title="Flexible API">
+                                    Integrate with any monitoring system, from custom scripts to enterprise tools, using our simple yet powerful REST API.
+                                </Feature>
+                                <Feature icon="comment" title="Team Collaboration">
+                                    Comment on alerts, assign responsibilities, track resolution progress, and maintain clear communication channels.
+                                </Feature>
+                                <Feature icon="barChart" title="Comprehensive Audit Logs">
+                                    Maintain a complete and searchable history of all alerts, actions, and responses for compliance and performance review.
+                                </Feature>
+                                <Feature icon="check-circle" title="Advanced Controls">
+                                    Customize your notification experience with granular settings, smart filtering, snoozing capabilities, and priority levels.
+                                </Feature>
+                            </div>
+                        </div>
+                    </section>
+
+                </main>
+
+                {/* Footer */}
+                <footer className="bg-gray-50/80 backdrop-blur-sm">
+                    <div className="container mx-auto px-8 py-12">
+                         <div className="text-center text-sm text-gray-500">
+                            <p>&copy; {new Date().getFullYear()} MCM Alerts. All rights reserved.</p>
+                        </div>
                     </div>
-                    <h3 className="text-xl font-semibold">{feature.title}</h3>
-                  </div>
-                  <p className="text-slate-600 dark:text-slate-300 leading-relaxed">
-                    {feature.description}
-                  </p>
-                </div>
-              ))}
+                </footer>
             </div>
-          </div>
-        </section>
-
-        {/* How it Works */}
-        <section className="py-16 md:py-24 bg-slate-50 dark:bg-slate-900">
-          <div className="container mx-auto px-4 md:px-6">
-            <div className="text-center mb-16">
-              <h2 className="text-3xl md:text-4xl font-bold mb-4">
-                Get Started in Minutes
-              </h2>
-              <p className="text-lg text-slate-600 dark:text-slate-300">
-                Simple setup process that gets you monitoring in no time
-              </p>
-            </div>
-            
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-8 relative">
-              {/* Connection lines */}
-              <div className="hidden md:block absolute top-16 left-1/3 right-1/3 h-0.5 bg-gradient-to-r from-blue-500 to-purple-600"></div>
-              
-              {[
-                { title: 'Connect', desc: 'Integrate our REST API into your existing monitoring systems in minutes', icon: 'zap' },
-                { title: 'Configure', desc: 'Set up topics, notification rules, and team permissions with our intuitive interface', icon: 'settings' },
-                { title: 'Monitor', desc: 'Receive, manage, and resolve alerts efficiently with your team', icon: 'monitor' }
-              ].map((step, i) => (
-                <div key={step.title} className="relative text-center group">
-                  <div className="w-16 h-16 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white font-bold text-2xl mx-auto mb-6 group-hover:scale-110 transition-transform duration-200 shadow-lg">
-                    {i + 1}
-                  </div>
-                  <h3 className="text-xl font-semibold mb-3">{step.title}</h3>
-                  <p className="text-slate-600 dark:text-slate-300">{step.desc}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-        </section>
-
-        {/* CTA Section */}
-        <section className="py-16 md:py-24 bg-gradient-to-r from-blue-600 to-purple-700">
-          <div className="container mx-auto px-4 md:px-6 text-center">
-            <h2 className="text-3xl md:text-4xl font-bold text-white mb-4">
-              Ready to Transform our Monitoring?
-            </h2>
-            <p className="text-xl text-blue-100 mb-8 max-w-2xl mx-auto">
-              Let MCM Alerts be the solution for our critical monitoring needs
-            </p>
-            <button 
-              onClick={() => onNavigate('login')}
-              className="inline-flex h-12 items-center justify-center rounded-lg bg-white text-blue-600 px-8 text-base font-semibold shadow-lg hover:shadow-xl transform hover:-translate-y-1 transition-all duration-200"
-            >
-              Get Started
-              <span className="ml-2">→</span>
-            </button>
-          </div>
-        </section>
-      </main>
-
-      {/* Footer */}
-      <footer className="border-t border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800">
-        <div className="container mx-auto px-4 md:px-6 py-8">
-          <div className="flex flex-col md:flex-row justify-between items-center gap-4">
-            <div className="flex items-center space-x-2">
-              <div className="w-6 h-6 bg-gradient-to-br from-blue-600 to-purple-700 rounded flex items-center justify-center">
-                <Icon name="mcmLogo" className="w-8 h-8 text-white" />
-              </div>
-              <span className="text-sm text-slate-600 dark:text-slate-400">
-                © 2025 MCM Alerts. All rights reserved.
-              </span>
-            </div>
-            <button 
-              onClick={() => window.scrollTo({top: 0, behavior: 'smooth'})} 
-              className="text-sm font-medium text-blue-600 hover:text-blue-700 transition-colors"
-            >
-              Back to top ↑
-            </button>
-          </div>
         </div>
-      </footer>
-    </div>
-  );
+    );
 };

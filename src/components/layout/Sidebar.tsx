@@ -31,14 +31,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
 }) => {
     return (
         <>
-            {isSidebarOpen && <div className="fixed inset-0 bg-black/60 z-30 lg:hidden" onClick={() => setIsSidebarOpen(false)}></div>}
+            {isSidebarOpen && <div className="fixed inset-0 bg-black/60 z-30 md:hidden" onClick={() => setIsSidebarOpen(false)}></div>}
             <aside 
-                className={`fixed top-0 left-0 z-40 h-screen w-72 bg-slate-900 text-slate-300 flex flex-col transition-transform duration-300 ease-in-out lg:translate-x-0 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}
+                className={`fixed top-0 left-0 z-40 h-screen w-72 bg-slate-900 text-slate-300 flex flex-col transition-transform duration-300 ease-in-out md:translate-x-0 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}
             >
                 <div className="h-20 flex items-center justify-center px-6 border-b border-slate-700 shrink-0">
                     <button onClick={() => onNavigate('dashboard')} className="flex items-center gap-3 text-white">
-                         <Icon name="mcmLogo" className="h-9 w-9" />
-                        <span className="text-2xl font-bold">MCM Alerts</span>
+                         <Icon name="mcmLogo" className="h-8 w-8" />
+                        <span className="text-xl sm:text-2xl font-bold">MCM Alerts</span>
                     </button>
                 </div>
 

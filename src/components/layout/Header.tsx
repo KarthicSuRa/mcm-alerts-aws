@@ -57,43 +57,43 @@ export const Header: React.FC<HeaderProps> = ({
     const statusInfo = statusIndicator[currentStatus];
 
     return (
-        <header className="sticky top-0 z-30 flex h-20 items-center justify-between border-b border-border bg-card px-6 shrink-0">
+        <header className="sticky top-0 z-30 flex flex-wrap items-center justify-between border-b border-border bg-card px-4 sm:px-6 py-3 shrink-0">
           {/* Left side: Logo, Title, and mobile menu button */}
-          <div className="flex items-center gap-6">
+          <div className="flex items-center gap-4">
             <button
-              className="p-2 -ml-3 rounded-md text-muted-foreground lg:hidden"
+              className="p-2 -ml-2 rounded-md text-muted-foreground md:hidden"
               onClick={() => setIsSidebarOpen(!isSidebarOpen)}
               aria-label="Toggle sidebar"
             >
               <Icon name="menu" className="h-7 w-7" />
             </button>
-            <div className="hidden items-center gap-4 lg:flex">
+            <div className="hidden items-center gap-3 md:flex">
                <Icon name="mcmLogo" className="h-9 w-9 text-primary" />
               <h1 className="text-2xl font-bold text-foreground">MCM Alerts</h1>
             </div>
           </div>
 
           {/* Right side: Actions and User Profile */}
-          <div className="flex items-center gap-5">
+          <div className="flex items-center gap-2 sm:gap-4">
             {/* Search */}
-            <div className="relative hidden md:block">
-              <Icon name="search" className="w-6 h-6 text-muted-foreground absolute left-3.5 top-1/2 -translate-y-1/2" />
+            <div className="relative flex-1 max-w-xs">
+              <Icon name="search" className="w-5 h-5 text-muted-foreground absolute left-3 top-1/2 -translate-y-1/2" />
               <input
                 type="text"
                 placeholder="Search alerts..."
-                className="w-full pl-12 pr-4 py-2.5 text-base rounded-md border border-border bg-transparent shadow-sm focus:border-ring focus:ring-ring"
+                className="w-full pl-10 pr-4 py-2 text-sm sm:text-base rounded-md border border-border bg-transparent shadow-sm focus:border-ring focus:ring-ring"
               />
             </div>
 
             {/* System Status Popover */}
-            <div className="relative hidden lg:flex" ref={statusRef}>
+            <div className="relative hidden md:flex" ref={statusRef}>
                  <button
                     onClick={() => setStatusOpen(prev => !prev)}
-                    className="flex items-center gap-3 text-muted-foreground hover:text-foreground transition-colors p-3 rounded-md"
+                    className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors p-2 rounded-md"
                     aria-label="System Status"
                   >
                     <div className={`w-3 h-3 rounded-full transition-colors ${statusInfo.color}`}></div>
-                    <span className="text-sm font-medium">
+                    <span className="text-sm font-medium hidden lg:inline">
                         System Status
                     </span>
                 </button>
@@ -103,21 +103,21 @@ export const Header: React.FC<HeaderProps> = ({
             {/* Theme Toggle */}
             <button
               onClick={themeContext.toggleTheme}
-              className="flex items-center gap-3 text-muted-foreground hover:text-foreground transition-colors p-3 rounded-md"
+              className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors p-2 rounded-md"
               aria-label="Toggle theme"
             >
               <Icon name={themeContext.theme === 'dark' ? 'sun' : 'moon'} className="w-6 h-6" />
-              <span className="hidden sm:inline text-base font-medium">Theme</span>
+              <span className="hidden lg:inline text-sm font-medium">Theme</span>
             </button>
 
             {/* Settings */}
             <button
               onClick={openSettings}
-              className="flex items-center gap-3 text-muted-foreground hover:text-foreground transition-colors p-3 rounded-md"
+              className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors p-2 rounded-md"
               aria-label="Open settings"
             >
               <Icon name="settings" className="w-6 h-6" />
-              <span className="hidden sm:inline text-base font-medium">Settings</span>
+              <span className="hidden lg:inline text-sm font-medium">Settings</span>
             </button>
 
             {/* Profile Dropdown */}
@@ -125,13 +125,13 @@ export const Header: React.FC<HeaderProps> = ({
               <div className="relative" ref={profileRef}>
                 <button
                   onClick={() => setProfileOpen(prev => !prev)}
-                  className="flex items-center gap-3 p-1.5 rounded-full focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+                  className="flex items-center gap-2 p-1.5 rounded-full focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
                 >
-                  <div className="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center text-primary text-lg font-bold">
+                  <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-primary/20 flex items-center justify-center text-primary font-bold">
                     {session.user.email ? session.user.email[0].toUpperCase() : 'U'}
                   </div>
-                  <span className="hidden md:inline text-base font-medium text-foreground">{session.user.email}</span>
-                  <Icon name="chevron-down" className="w-5 h-5 text-muted-foreground hidden md:inline" />
+                  <span className="hidden lg:inline text-sm font-medium text-foreground">{session.user.email}</span>
+                  <Icon name="chevron-down" className="w-5 h-5 text-muted-foreground hidden lg:inline" />
                 </button>
 
                 {isProfileOpen && (

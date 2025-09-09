@@ -33,7 +33,7 @@ export const StatCards: React.FC<StatCardsProps> = ({ notifications, sites }) =>
     }), [notifications]);
 
     return (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
             <StatCard title="Monitored Sites" value={sites.length} icon="monitor" bgColor="bg-indigo-500" />
             <StatCard title="New Alerts" value={stats.new} icon="bell" bgColor="bg-destructive" />
             <StatCard title="Acknowledged" value={stats.acknowledged} icon="check-circle" bgColor="bg-yellow-500" />

@@ -145,17 +145,17 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                 systemStatus={systemStatus} 
                 session={session} 
             />
-            <main className="flex-1 overflow-y-auto bg-background lg:ml-72">
+            <main className="flex-1 overflow-y-auto bg-background md:ml-72">
                 <div className="max-w-screen-2xl mx-auto p-4 sm:p-6 lg:p-8">
-                    <h1 className="text-2xl font-bold">My Dashboard</h1>
-                    <p className="text-muted-foreground">Welcome back, {session?.user?.email}. Here's an overview of your system.</p>
+                    <h1 className="text-2xl sm:text-3xl font-bold">My Dashboard</h1>
+                    <p className="text-muted-foreground text-sm sm:text-base">Welcome back, {session?.user?.email}. Here's an overview of your system.</p>
                     
                     <div className="mt-6">
                         <StatCards notifications={notifications} sites={sitesWithStatus} />
                     </div>
                     
-                    <div className="grid grid-cols-1 xl:grid-cols-5 gap-8 mt-8">
-                        <div className="xl:col-span-3 flex flex-col gap-8">
+                    <div className="grid grid-cols-1 lg:grid-cols-5 gap-8 mt-8">
+                        <div className="lg:col-span-3 flex flex-col gap-8 order-2 lg:order-1">
                             <RecentNotifications 
                                 notifications={notifications.slice(0, 10)} 
                                 onUpdateNotification={onUpdateNotification}
@@ -166,7 +166,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                             />
                             <ActivityFeed notifications={notifications} />
                         </div>
-                        <div className="xl:col-span-2 flex flex-col gap-8">
+                        <div className="lg:col-span-2 flex flex-col gap-8 order-1 lg:order-2">
                             <div className="bg-card border rounded-lg p-4">
                                 <h2 className="text-xl font-semibold mb-2 px-2">Site Availability</h2>
                                 <div className="border-b border-border mb-4">
