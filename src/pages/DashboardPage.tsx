@@ -157,10 +157,9 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                     <div className="grid grid-cols-1 lg:grid-cols-5 gap-8 mt-8">
                         <div className="lg:col-span-3 flex flex-col gap-8 order-2 lg:order-1">
                             <RecentNotifications 
-                                notifications={notifications.slice(0, 10)} 
+                                notifications={notifications} 
                                 onUpdateNotification={onUpdateNotification}
                                 onAddComment={onAddComment}
-                                onClearLogs={onClearLogs}
                                 topics={topics}
                                 session={session}
                             />
