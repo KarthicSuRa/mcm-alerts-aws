@@ -1,64 +1,63 @@
-import React, { useMemo } from 'react';
+import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { MonitoredSite } from '../../types';
+import { supabase } from '../../lib/supabaseClient';
+import { Button } from '../ui/Button';
 
 interface SiteListProps {
   sites: MonitoredSite[];
   loading: boolean;
   error: string | null;
-  refetch: () => void;
+  onSiteDeleted: () => void;
 }
 
-// Helper to extract country from site name
-const getCountryFromSiteName = (name: string): string => {
-    const parts = name.split(' ');
-    if (parts.length > 1) {
-        const countryCode = parts[1];
-        if (countryCode && countryCode.length === 2) {
-            const codeMap: {[key: string]: string} = {
-                'AE': 'United Arab Emirates',
-                'AT': 'Austria',
-                'AU': 'Australia',
-                'BE': 'Belgium',
-                'CA': 'Canada',
-                'CH': 'Switzerland',
-                'CN': 'China',
-                'CZ': 'Czech Republic',
-                'DE': 'Germany',
-                'DK': 'Denmark',
-                'ES': 'Spain',
-                'FI': 'Finland',
-                'FR': 'France',
-                'GR': 'Greece',
-                'HK': 'Hong Kong',
-                'IE': 'Ireland',
-                'IT': 'Italy',
-                'JP': 'Japan',
-                'KR': 'South Korea',
-                'LU': 'Luxembourg',
-                'MY': 'Malaysia',
-                'NL': 'Netherlands',
-                'NO': 'Norway',
-                'NZ': 'New Zealand',
-                'PL': 'Poland',
-                'PT': 'Portugal',
-                'SE': 'Sweden',
-                'SG': 'Singapore',
-                'TH': 'Thailand',
-                'TW': 'Taiwan',
-                'UK': 'United Kingdom',
-                'US': 'United States',
-            };
-            return codeMap[countryCode.toUpperCase()] || countryCode;
-        }
-    }
-    return 'Global'; // Default category
+// Helper to get full country name from code
+const getCountryName = (code: string): string => {
+    const codeMap: {[key: string]: string} = {
+        'IN': 'India',
+        'AE': 'United Arab Emirates',
+        'AT': 'Austria',
+        'AU': 'Australia',
+        'BE': 'Belgium',
+        'CA': 'Canada',
+        'CH': 'Switzerland',
+        'CN': 'China',
+        'CZ': 'Czech Republic',
+        'DE': 'Germany',
+        'DK': 'Denmark',
+        'ES': 'Spain',
+        'FI': 'Finland',
+        'FR': 'France',
+        'GR': 'Greece',
+        'HK': 'Hong Kong',
+        'IE': 'Ireland',
+        'IT': 'Italy',
+        'JP': 'Japan',
+        'KR': 'South Korea',
+        'LU': 'Luxembourg',
+        'MY': 'Malaysia',
+        'NL': 'Netherlands',
+        'NO': 'Norway',
+        'NZ': 'New Zealand',
+        'PL': 'Poland',
+        'PT': 'Portugal',
+        'SE': 'Sweden',
+        'SG': 'Singapore',
+        'TH': 'Thailand',
+        'TW': 'Taiwan',
+        'UK': 'United Kingdom',
+        'US': 'United States',
+    };
+    return codeMap[code.toUpperCase()] || code;
 };
 
-const SiteList: React.FC<SiteListProps> = ({ sites, loading, error, refetch }) => {
+const SiteList: React.FC<SiteListProps> = ({ sites, loading, error, onSiteDeleted }) => {
+    const navigate = useNavigate();
+    const [showConfirm, setShowConfirm] = useState<string | null>(null);
 
-    const groupedSites = useMemo(() => {
+    const groupedSites = React.useMemo(() => {
         const groups = sites.reduce((acc, site) => {
-            const country = getCountryFromSiteName(site.name);
+            const country = getCountryName(site.country || 'Global');
             if (!acc[country]) {
                 acc[country] = [];
             }
@@ -66,13 +65,20 @@ const SiteList: React.FC<SiteListProps> = ({ sites, loading, error, refetch }) =
             return acc;
         }, {} as Record<string, MonitoredSite[]>);
         
-        return Object.entries(groups).sort(([a], [b]) => {
-            if (a === 'Global') return 1;
-            if (b === 'Global') return -1;
-            return a.localeCompare(b);
-        });
+        return Object.entries(groups).sort(([a], [b]) => a.localeCompare(b));
 
     }, [sites]);
+
+    const handleDelete = async (siteId: string) => {
+        setShowConfirm(null);
+        try {
+            const { error } = await supabase.from('monitored_sites').delete().eq('id', siteId);
+            if (error) throw error;
+            onSiteDeleted();
+        } catch (e: any) {
+            console.error("Error deleting site:", e.message);
+        }
+    };
 
     if (loading) {
         return <p className="p-4 text-center text-muted-foreground">Loading sites...</p>;
@@ -93,6 +99,7 @@ const SiteList: React.FC<SiteListProps> = ({ sites, loading, error, refetch }) =
                             <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Status</th>
                             <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Response Time (ms)</th>
                             <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Last Checked</th>
+                            <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-muted-foreground uppercase tracking-wider">Actions</th>
                         </tr>
                     </thead>
                     {groupedSites.map(([country, countrySites]) => (
@@ -103,7 +110,11 @@ const SiteList: React.FC<SiteListProps> = ({ sites, loading, error, refetch }) =
                                 const statusText = isUp ? 'Up' : (isUp === false ? 'Down' : 'Unknown');
 
                                 return (
-                                    <tr key={site.id} className="hover:bg-muted/50">
+                                    <tr 
+                                        key={site.id} 
+                                        className="hover:bg-muted/50 cursor-pointer"
+                                        onClick={() => navigate(`/monitoring/${site.id}`)}
+                                    >
                                         {index === 0 && (
                                             <td rowSpan={countrySites.length} className="px-6 py-4 align-middle whitespace-nowrap text-sm font-medium text-foreground">
                                                 {country}
@@ -114,7 +125,15 @@ const SiteList: React.FC<SiteListProps> = ({ sites, loading, error, refetch }) =
                                                 <div className={`h-3 w-3 rounded-full mr-3 flex-shrink-0 ${isUp ? 'bg-green-500' : isUp === false ? 'bg-red-500' : 'bg-gray-400'}`}></div>
                                                 <div className="truncate">
                                                     <div className="text-sm font-medium text-foreground truncate">{site.name}</div>
-                                                    <a href={site.url} target="_blank" rel="noopener noreferrer" className="text-sm text-muted-foreground hover:text-primary truncate">{site.url}</a>
+                                                    <a 
+                                                        href={site.url} 
+                                                        target="_blank" 
+                                                        rel="noopener noreferrer" 
+                                                        className="text-sm text-muted-foreground hover:text-primary truncate"
+                                                        onClick={(e) => e.stopPropagation()}
+                                                    >
+                                                        {site.url}
+                                                    </a>
                                                 </div>
                                             </div>
                                         </td>
@@ -126,6 +145,20 @@ const SiteList: React.FC<SiteListProps> = ({ sites, loading, error, refetch }) =
                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-muted-foreground">{latestPing?.response_time_ms ?? 'N/A'}</td>
                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-muted-foreground">
                                             {latestPing?.checked_at ? new Date(latestPing.checked_at).toLocaleString() : 'Never'}
+                                        </td>
+                                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-right">
+                                            <>
+                                                {showConfirm === site.id ? (
+                                                    <div onClick={(e) => e.stopPropagation()}>
+                                                        <Button variant="destructive" size="sm" onClick={() => handleDelete(site.id)}>Confirm</Button>
+                                                        <Button variant="ghost" size="sm" onClick={(e) => {e.stopPropagation(); setShowConfirm(null);}}>Cancel</Button>
+                                                    </div>
+                                                ) : (
+                                                    <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); setShowConfirm(site.id); }}>
+                                                        Delete
+                                                    </Button>
+                                                )}
+                                            </>
                                         </td>
                                     </tr>
                                 );

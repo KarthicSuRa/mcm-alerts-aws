@@ -90,10 +90,17 @@ export const AuditLogsPage: React.FC<AuditLogsPageProps> = ({ notifications, onN
     return (
     <>
         <Header onNavigate={onNavigate} onLogout={onLogout} notifications={notifications} isSidebarOpen={isSidebarOpen} setIsSidebarOpen={setIsSidebarOpen} openSettings={openSettings} systemStatus={systemStatus} session={session} />
-        <main className="flex-1 overflow-y-auto bg-background lg:ml-72">
+        <main className="flex-1 overflow-y-auto bg-background md:ml-72">
             <div className="max-w-screen-2xl mx-auto p-4 sm:p-6 lg:p-8">
-                <h1 className="text-4xl font-bold mb-1">Audit Logs</h1>
-                <p className="text-muted-foreground mb-6">A detailed history of all notification events and user actions.</p>
+                <div className="flex items-center mb-6">
+                    <button onClick={() => onNavigate('dashboard')} className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 mr-4">
+                        <Icon name="arrow-left" className="h-5 w-5 text-gray-700 dark:text-gray-300" />
+                    </button>
+                    <div>
+                        <h1 className="text-4xl font-bold">Audit Logs</h1>
+                        <p className="text-muted-foreground mt-1">A detailed history of all notification events and user actions.</p>
+                    </div>
+                </div>
                 
                 <div className="bg-card rounded-xl border border-border shadow-sm overflow-hidden">
                     <div className="p-4 flex flex-col sm:flex-row gap-4 border-b border-border">

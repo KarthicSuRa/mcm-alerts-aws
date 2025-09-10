@@ -39,10 +39,13 @@ export const HowItWorksPage: React.FC<HowItWorksPageProps> = ({ notifications, o
   return (
     <>
       <Header onNavigate={onNavigate} onLogout={onLogout} notifications={notifications} isSidebarOpen={isSidebarOpen} setIsSidebarOpen={setIsSidebarOpen} openSettings={openSettings} systemStatus={systemStatus} session={session} />
-      <main className="flex-1 overflow-y-auto bg-background lg:ml-72">
+      <main className="flex-1 overflow-y-auto bg-background md:ml-72">
         <div className="max-w-screen-2xl mx-auto p-4 sm:p-6 lg:p-8">
             <div className="max-w-4xl mx-auto">
                 <div className="text-center mb-12">
+                    <button onClick={() => onNavigate('dashboard')} className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 mr-4 inline-block md:hidden">
+                        <Icon name="arrow-left" className="h-5 w-5 text-gray-700 dark:text-gray-300" />
+                    </button>
                     <h1 className="text-5xl font-bold tracking-tight text-foreground sm:text-5xl">
                         A Simple, Powerful Workflow
                     </h1>

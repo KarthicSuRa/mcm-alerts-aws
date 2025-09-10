@@ -179,14 +179,19 @@ export const AnalyticsPage: React.FC<AnalyticsPageProps> = ({
     return (
     <>
         <Header onNavigate={onNavigate} onLogout={onLogout} notifications={notifications} isSidebarOpen={isSidebarOpen} setIsSidebarOpen={setIsSidebarOpen} openSettings={openSettings} systemStatus={systemStatus} session={session} />
-        <main className="flex-1 overflow-y-auto bg-slate-50 dark:bg-slate-900 lg:ml-72">
+        <main className="flex-1 overflow-y-auto bg-slate-50 dark:bg-slate-900 md:ml-72">
             <div className="max-w-screen-xl mx-auto p-4 sm:p-6 lg:p-8">
                 <div className="flex flex-col sm:flex-row items-start sm:items-center sm:justify-between mb-8">
-                    <div>
-                        <h1 className="text-3xl font-bold text-slate-800 dark:text-white">Analytics & Reporting</h1>
-                        <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-                            System and team performance insights for {format(selectedMonth, 'MMMM yyyy')}.
-                        </p>
+                    <div className="flex items-center">
+                        <button onClick={() => onNavigate('dashboard')} className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 mr-4">
+                            <Icon name="arrow-left" className="h-5 w-5 text-gray-700 dark:text-gray-300" />
+                        </button>
+                        <div>
+                            <h1 className="text-3xl font-bold text-slate-800 dark:text-white">Analytics & Reporting</h1>
+                            <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+                                System and team performance insights for {format(selectedMonth, 'MMMM yyyy')}.
+                            </p>
+                        </div>
                     </div>
                     <button onClick={handleGenerateReport} className="mt-4 sm:mt-0 flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors">
                         <Icon name="file-text" className="w-4 h-4" />

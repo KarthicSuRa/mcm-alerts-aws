@@ -30,12 +30,12 @@ interface DashboardPageProps {
 const REGIONS: Record<string, { center: L.LatLngExpression; zoom: number; filter: (site: MonitoredSite) => boolean; }> = {
     Global: {
         center: [20, 0],
-        zoom: 1.8,
+        zoom: 1.1,
         filter: (site) => !!site.latitude && !!site.longitude,
     },
     Europe: {
         center: [50.1109, 10.1348],
-        zoom: 3.5,
+        zoom: 3.2,
         filter: (site) => !!site.latitude && !!site.longitude && site.latitude > 35 && site.latitude < 70 && site.longitude > -10 && site.longitude < 40,
     },
     'North America': {
@@ -45,7 +45,7 @@ const REGIONS: Record<string, { center: L.LatLngExpression; zoom: number; filter
     },
     'Asia Pacific': {
         center: [0, 120],
-        zoom: 2.8,
+        zoom: 2.1,
         filter: (site) => !!site.latitude && !!site.longitude && site.latitude > -50 && site.latitude < 70 && site.longitude > 60 && site.longitude < 180,
     },
 };
@@ -101,6 +101,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                     return {
                         ...site,
                         status: latestPing ? (latestPing.is_up ? 'online' : 'offline') : 'unknown',
+                        last_checked: latestPing ? latestPing.checked_at : null,
                         latest_ping: latestPing || null,
                     };
                 });
@@ -147,8 +148,12 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
             />
             <main className="flex-1 overflow-y-auto bg-background md:ml-72">
                 <div className="max-w-screen-2xl mx-auto p-4 sm:p-6 lg:p-8">
-                    <h1 className="text-2xl sm:text-3xl font-bold">My Dashboard</h1>
-                    <p className="text-muted-foreground text-sm sm:text-base">Welcome back, {session?.user?.email}. Here's an overview of your system.</p>
+                    <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start mb-6">
+                        <div>
+                            <h1 className="text-2xl sm:text-3xl font-bold">My Dashboard</h1>
+                            <p className="text-muted-foreground text-sm sm:text-base mt-1">Welcome back, {session?.user?.email}. Here's an overview of your system.</p>
+                        </div>
+                    </div>
                     
                     <div className="mt-6">
                         <StatCards notifications={notifications} sites={sitesWithStatus} />
@@ -171,7 +176,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                             <div className="bg-card border rounded-lg p-4">
                                 <h2 className="text-xl font-semibold mb-2 px-2">Site Availability</h2>
                                 <div className="border-b border-border mb-4">
-                                    <nav className="-mb-px flex space-x-6 px-2">
+                                    <nav className="-mb-px flex space-x-6 px-2 overflow-x-auto">
                                         {regions.map(region => (
                                             <button
                                                 key={region}

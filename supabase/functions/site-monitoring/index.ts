@@ -51,7 +51,7 @@ serve(async (req) => {
 
   await Promise.all(checks);
 
-  return new Response(JSON.stringify({ message: 'Checks completed' }), {
+  return new Response(JSON.stringify({ message: `Checks completed for ${sites.length} sites.` }), {
     headers: { 'Content-Type': 'application/json' },
   });
 });

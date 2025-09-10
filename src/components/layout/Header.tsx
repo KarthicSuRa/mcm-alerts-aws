@@ -13,6 +13,7 @@ interface HeaderProps {
   notifications: Notification[];
   systemStatus: SystemStatusData;
   onNavigate: (page: string) => void;
+  title?: string; // Add title prop
 }
 
 export const Header: React.FC<HeaderProps> = ({ 
@@ -21,7 +22,8 @@ export const Header: React.FC<HeaderProps> = ({
   setIsSidebarOpen, 
   openSettings, 
   session,
-  systemStatus
+  systemStatus,
+  title, // Destructure title
 }) => {
     const themeContext = React.useContext(ThemeContext);
     const [isProfileOpen, setProfileOpen] = React.useState(false);
@@ -69,7 +71,7 @@ export const Header: React.FC<HeaderProps> = ({
             </button>
             <div className="hidden items-center gap-3 md:flex">
                <Icon name="mcmLogo" className="h-9 w-9 text-primary" />
-              <h1 className="text-2xl font-bold text-foreground">MCM Alerts</h1>
+              <h1 className="text-2xl font-bold text-foreground">{title || 'MCM Alerts'}</h1>
             </div>
           </div>
 

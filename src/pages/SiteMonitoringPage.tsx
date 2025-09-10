@@ -1,3 +1,5 @@
+'use client';
+
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import L from 'leaflet';
 import { Header } from '../components/layout/Header';
@@ -5,26 +7,25 @@ import SiteList from '../components/monitoring/SiteList';
 import SiteMap from '../components/monitoring/SiteMap';
 import { AddSiteModal } from '../components/monitoring/AddSiteModal';
 import { Button } from '../components/ui/Button';
-import { type Notification, type Topic, type SystemStatusData, type Session, type MonitoredSite } from '../types';
+import { type Notification, type SystemStatusData, type Session, type MonitoredSite } from '../types';
 import { supabase } from '../lib/supabaseClient';
+import { useNavigate } from 'react-router-dom';
 
 interface SiteMonitoringPageProps {
-  notifications: Notification[];
-  topics: Topic[];
-  onNavigate: (page: string) => void;
+  session: Session;
   onLogout: () => void;
+  openSettings: () => void;
   isSidebarOpen: boolean;
   setIsSidebarOpen: (open: boolean) => void;
-  openSettings: () => void;
+  notifications: Notification[];
   systemStatus: SystemStatusData;
-  session: Session;
 }
 
 const REGIONS: Record<string, { center: L.LatLngExpression; zoom: number; filter: (site: MonitoredSite) => boolean; }> = {
     Global: {
         center: [20, 0],
         zoom: 1.5,
-        filter: (site) => !!site.latitude && !!site.longitude,
+        filter: (site) => !!site.latitude && !!site.longitude, // Show all sites on Global map
     },
     Europe: {
         center: [50.1109, 10.1348],
@@ -45,12 +46,19 @@ const REGIONS: Record<string, { center: L.LatLngExpression; zoom: number; filter
 
 export const SiteMonitoringPage: React.FC<SiteMonitoringPageProps> = ({
   session,
+  onLogout,
+  openSettings,
+  isSidebarOpen,
+  setIsSidebarOpen,
+  notifications,
+  systemStatus,
 }) => {
   const [sites, setSites] = useState<MonitoredSite[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isAddSiteModalOpen, setIsAddSiteModalOpen] = useState(false);
   const [activeTab, setActiveTab] = useState('Global');
+  const navigate = useNavigate();
 
   const fetchSiteStatus = useCallback(async () => {
     setLoading(true);
@@ -95,6 +103,7 @@ export const SiteMonitoringPage: React.FC<SiteMonitoringPageProps> = ({
 
   useEffect(() => {
     fetchSiteStatus();
+    
     const channel = supabase
       .channel('public:ping_logs')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'ping_logs' }, (payload) => {
@@ -125,27 +134,47 @@ export const SiteMonitoringPage: React.FC<SiteMonitoringPageProps> = ({
           mapZoom: region.zoom,
       };
   }, [sites, activeTab]);
-
-  const siteCount = (region: string) => {
-      if (region === 'Global') return sites.filter(REGIONS.Global.filter).length;
-      return sites.filter(REGIONS[region]?.filter).length || 0;
+  
+  const siteCount = (regionName: string) => {
+    const region = REGIONS[regionName];
+    if (!region) return 0;
+    if (regionName === 'Global') {
+      return sites.filter(REGIONS.Global.filter).length;
+    }
+    return sites.filter(region.filter).length;
   };
 
   return (
     <>
-      <main className="flex-1 overflow-y-auto bg-background lg:ml-72">
+      <Header
+        session={session}
+        onLogout={onLogout}
+        openSettings={openSettings}
+        isSidebarOpen={isSidebarOpen}
+        setIsSidebarOpen={setIsSidebarOpen}
+        notifications={notifications}
+        systemStatus={systemStatus}
+        title="Site Monitoring"
+        onNavigate={() => {}}
+      />
+      <main className="flex-1 overflow-y-auto bg-background md:ml-72">
         <div className="max-w-screen-2xl mx-auto p-4 sm:p-6 lg:p-8">
-          <div className="flex justify-between items-center mb-6">
+          <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center mb-6 gap-4">
             <div>
+              <Button onClick={() => navigate('/dashboard')} className="mb-4">
+                &larr; Back to Dashboard
+              </Button>
               <h1 className="text-2xl font-bold">Site Monitoring</h1>
               <p className="text-sm text-muted-foreground mt-1">Track the real-time status and performance of your websites and services.</p>
             </div>
-            <Button onClick={() => setIsAddSiteModalOpen(true)}>Add New Site</Button>
+            <div className="flex gap-2">
+              <Button onClick={() => setIsAddSiteModalOpen(true)} className="w-full sm:w-auto">Add New Site</Button>
+            </div>
           </div>
           
           <div className="bg-card border rounded-lg p-6">
             <div className="border-b border-border mb-4">
-                <nav className="-mb-px flex space-x-8">
+                <nav className="-mb-px flex space-x-8 overflow-x-auto">
                     {Object.keys(REGIONS).map(region => (
                         <button
                             key={region}
@@ -179,7 +208,12 @@ export const SiteMonitoringPage: React.FC<SiteMonitoringPageProps> = ({
                             />
                         )}
                     </div>
-                    <SiteList sites={filteredSites} loading={loading} error={null} refetch={fetchSiteStatus} />
+                    <SiteList 
+                        sites={filteredSites} 
+                        loading={loading} 
+                        error={null} 
+                        onSiteDeleted={fetchSiteStatus} 
+                    />
                 </>
             )}
           </div>

@@ -14,10 +14,12 @@ import { SiteMonitoringPage } from './pages/SiteMonitoringPage';
 import { Sidebar } from './components/layout/Sidebar';
 import { SettingsModal } from './components/layout/SettingsModal';
 import { NotificationToast } from './components/ui/NotificationToast';
-import { Theme, type Notification, Severity, NotificationStatus, SystemStatusData, Session, Comment, NotificationUpdatePayload, Topic, Database,  MonitoredSite } from './types';
+import { Theme, type Notification, Severity, NotificationStatus, SystemStatusData, Session, Comment, NotificationUpdatePayload, Topic, Database, MonitoredSite } from './types';
 import { supabase } from './lib/supabaseClient';
 import { OneSignalService } from './lib/oneSignalService';
 import { ThemeContext } from './contexts/ThemeContext';
+import { Routes, Route, useNavigate, useLocation } from 'react-router-dom';
+import { SiteDetailPage } from './pages/monitoring/SiteDetailPage';
 import ErrorBoundary from './components/ui/ErrorBoundary';
 
 type NotificationFromDB = Database['public']['Tables']['notifications']['Row'];
@@ -33,7 +35,6 @@ interface ExtendedNotification extends Notification {
 function App() {
   const [theme, setTheme] = useState<Theme>('light');
   const [session, setSession] = useState<Session | null>(null);
-  const [currentPage, setCurrentPage] = useState('dashboard');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [unauthedPage, setUnauthedPage] = useState<'landing' | 'login'>('landing');
@@ -49,6 +50,8 @@ function App() {
   const [loadingSites, setLoadingSites] = useState(true);
   const [sitesError, setSitesError] = useState<string | null>(null);
 
+  const navigate = useNavigate();
+  const location = useLocation();
 
   const oneSignalService = OneSignalService.getInstance();
   const oneSignalInitialized = useRef(false);
@@ -60,6 +63,18 @@ function App() {
   const reconnectAttempts = useRef(0);
   const maxReconnectAttempts = 5;
   const lastActivity = useRef(Date.now());
+
+  const currentPage = useMemo(() => {
+    const path = location.pathname;
+    if (path.startsWith('/site-monitoring') || path.startsWith('/monitoring')) return 'site-monitoring';
+    if (path.startsWith('/api-docs')) return 'api-docs';
+    if (path.startsWith('/audit-logs')) return 'audit-logs';
+    if (path.startsWith('/how-it-works')) return 'how-it-works';
+    if (path.startsWith('/calendar')) return 'calendar';
+    if (path.startsWith('/analytics')) return 'analytics';
+    if (path.startsWith('/topic-manager')) return 'topic-manager';
+    return 'dashboard';
+  }, [location.pathname]);
 
   const addToast = useCallback((notification: ExtendedNotification) => {
     console.log('🍞 Adding toast notification:', notification.title);
@@ -181,7 +196,6 @@ function App() {
     const notificationChannel = supabase
       .channel('notifications-global', {
         config: {
-          broadcast: { self: false },
           presence: { key: `user-${session.user.id}` }
         }
       })
@@ -271,35 +285,44 @@ function App() {
 
     // Comments channel with enhanced mobile configuration
     const commentsChannel = supabase
-      .channel(`comments-${session.user.id}`, {
-        config: {
-          broadcast: { self: false },
-          presence: { key: session.user.id }
+    .channel(`comments-${session.user.id}`, {
+      config: {
+        broadcast: { self: true },
+        presence: { key: session.user.id }
+      }
+    })
+    .on<CommentFromDB>('postgres_changes', {
+      event: 'INSERT',
+      schema: 'public',
+      table: 'comments'
+    }, async (payload) => {
+      console.log('💬 New comment received via realtime:', payload.new);
+      const newCommentPayload = payload.new;
+      const newComment = {
+        ...newCommentPayload,
+        user_email: newCommentPayload.user_id === session.user.id ?
+          (session.user.email ?? 'Current User') : 'Another User'
+      } as Comment;
+
+      setNotifications(prev => {
+        const notification = prev.find(n => n.id === newComment.notification_id);
+
+        // If the comment already exists in the state, don't add it again.
+        if (notification && notification.comments.some(c => c.id === newComment.id)) {
+          return prev;
         }
-      })
-      .on<CommentFromDB>('postgres_changes', { 
-        event: 'INSERT', 
-        schema: 'public', 
-        table: 'comments' 
-      }, async (payload) => {
-        console.log('💬 New comment received:', payload.new);
-        const newCommentPayload = payload.new;
-        const newComment = {
-          ...newCommentPayload,
-          user_email: newCommentPayload.user_id === session.user.id ? 
-            (session.user.email ?? 'Current User') : 'Another User'
-        } as Comment;
         
-        setNotifications(prev => prev.map(n => 
-          n.id === newComment.notification_id 
-            ? { 
-                ...n, 
-                comments: [...(n.comments || []), newComment]
-                  .sort((a,b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()) 
-              } 
+        return prev.map(n =>
+          n.id === newComment.notification_id
+            ? {
+              ...n,
+              comments: [...(n.comments || []), newComment]
+                .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+            }
             : n
-        ));
-      })
+        );
+      });
+    })
       .on('system', { event: '*' }, (payload) => {
         if (payload.event === 'phx_error' || payload.status === 'error') {
           console.log('❌ Comments channel error detected');
@@ -951,12 +974,12 @@ function App() {
     fetchInitialData()
       .then(() => {
         if (mounted && dataFetched.current) {
-        // Setup realtime with slight delay
-        setTimeout(() => {
-          if (mounted) {
-            setupRealtimeSubscriptions();
-          }
-        }, 1000);
+          // Setup realtime with slight delay
+          setTimeout(() => {
+            if (mounted) {
+              setupRealtimeSubscriptions();
+            }
+          }, 1000);
         }
       })
       .catch(error => {
@@ -995,33 +1018,66 @@ function App() {
       cleanup();
     };
   }, [session, authLoading, handleNewNotification, setupRealtimeSubscriptions]);
+
   // Fetch Monitored Sites
   useEffect(() => {
     if (!session) return;
 
     const fetchSites = async () => {
-        setLoadingSites(true);
-        setSitesError(null);
-        try {
-            const { data, error } = await supabase
-                .from('monitored_sites')
-                .select('*');
+      setLoadingSites(true);
+      setSitesError(null);
+      try {
+        const { data, error } = await supabase
+          .from('monitored_sites')
+          .select('*');
 
-            if (error) {
-                throw error;
-            }
-            setSites(data || []);
-        } catch (error: any) {
-            console.error('Error fetching monitored sites:', error);
-            setSitesError('Failed to load site data.');
-        } finally {
-            setLoadingSites(false);
+        if (error) {
+          throw error;
         }
+        setSites(data || []);
+      } catch (error: any) {
+        console.error('Error fetching monitored sites:', error);
+        setSitesError('Failed to load site data.');
+      } finally {
+        setLoadingSites(false);
+      }
     };
 
     fetchSites();
   }, [session]);
+  useEffect(() => {
+    if (!session) return;
 
+    const sitesSubscription = supabase
+      .channel('public:monitored_sites')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'monitored_sites' },
+        (payload) => {
+          console.log('Site change received!', payload);
+          if (payload.eventType === 'INSERT') {
+            setSites(currentSites => [...currentSites, payload.new as MonitoredSite]);
+          }
+          if (payload.eventType === 'UPDATE') {
+            setSites(currentSites =>
+              currentSites.map(site =>
+                site.id === payload.new.id ? (payload.new as MonitoredSite) : site
+              )
+            );
+          }
+          if (payload.eventType === 'DELETE') {
+            setSites(currentSites =>
+              currentSites.filter(site => site.id !== payload.old.id)
+            );
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(sitesSubscription);
+    };
+  }, [session]);
   const subscribeToPush = useCallback(async () => {
     if (!session) return;
     setIsPushLoading(true);
@@ -1141,10 +1197,10 @@ function App() {
 
   const handleNavigate = useCallback((page: string) => {
     if (session) {
-      setCurrentPage(page);
+      navigate(`/${page}`); // Use navigate to change the URL
     }
     setIsSidebarOpen(false);
-  }, [session]);
+  }, [session, navigate]);
   
   const sendTestAlert = useCallback(async () => {
     if (snoozedUntil && new Date() < snoozedUntil) {
@@ -1199,44 +1255,32 @@ function App() {
     if (!session) {
       throw new Error('No session available');
     }
-    
-    console.log('💬 Adding comment:', { notificationId, text });
-    
+
+    console.log('💬 Inserting comment into database:', { notificationId, text });
+
     try {
+      // The insert call will trigger the realtime subscription, which updates the UI.
+      // We no longer need to manually update the state here, which avoids the race condition.
       const { error, data } = await supabase
         .from('comments')
-        .insert([{ 
-          notification_id: notificationId, 
-          text: text.trim(), 
-          user_id: session.user.id 
+        .insert([{
+          notification_id: notificationId,
+          text: text.trim(),
+          user_id: session.user.id
         }])
-        .select()
+        .select('id') // Only select the ID, as the rest is handled by the subscription
         .single();
-      
+
       if (error) {
         console.error("❌ Error adding comment:", error);
+        alert(`Failed to add comment: ${error.message}`);
         throw error;
       }
-      
-      console.log('✅ Comment added successfully:', data);
-      
-      const newComment = {
-        ...data,
-        user_email: session.user.email ?? 'Current User'
-      } as Comment;
-      
-      setNotifications(prev => prev.map(n => 
-        n.id === notificationId 
-          ? { 
-              ...n, 
-              comments: [...(n.comments || []), newComment]
-                .sort((a,b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()) 
-            } 
-          : n
-      ));
-      
+
+      console.log('✅ Comment inserted successfully:', data.id);
     } catch (error) {
       console.error("❌ Failed to add comment:", error);
+      // Re-throw to allow component-level error handling if needed
       throw error;
     }
   }, [session]);
@@ -1298,6 +1342,7 @@ function App() {
       alert('Failed to update subscription. Please try again.');
     }
   }, [session, isPushEnabled]);
+
   const handleDeleteTopic = useCallback(async (topic: Topic) => {
     if (!session) return;
     try {
@@ -1323,31 +1368,32 @@ function App() {
   const handleClearLogs = useCallback(async () => {
     if (!session) return;
     try {
-        console.log('🔥 Clearing all notifications...');
-        
-        // This will delete all notifications. Ensure you have cascading deletes
-        // set up in your Supabase database for related comments, or delete them first.
-        const { error } = await supabase
-            .from('notifications')
-            .delete()
-            .neq('id', '00000000-0000-0000-0000-000000000000'); // Condition to delete all rows
+      console.log('🔥 Clearing all notifications...');
+      
+      // This will delete all notifications. Ensure you have cascading deletes
+      // set up in your Supabase database for related comments, or delete them first.
+      const { error } = await supabase
+        .from('notifications')
+        .delete()
+        .neq('id', '00000000-0000-0000-0000-000000000000'); // Condition to delete all rows
 
-        if (error) {
-            console.error("❌ Error clearing notifications:", error);
-            alert(`Failed to clear logs: ${error.message}`);
-            return;
-        }
+      if (error) {
+        console.error("❌ Error clearing notifications:", error);
+        alert(`Failed to clear logs: ${error.message}`);
+        return;
+      }
 
-        console.log('✅ All notifications cleared successfully');
-        // Update the UI
-        setNotifications([]);
-        setToasts([]);
+      console.log('✅ All notifications cleared successfully');
+      // Update the UI
+      setNotifications([]);
+      setToasts([]);
 
     } catch (error) {
-        console.error("❌ Failed to clear logs:", error);
-        alert('Failed to clear logs. Please try again.');
+      console.error("❌ Failed to clear logs:", error);
+      alert('Failed to clear logs. Please try again.');
     }
   }, [session]);
+
   const themeContextValue = useMemo(() => ({ theme, toggleTheme }), [theme, toggleTheme]);
 
   // Show loading while auth is initializing
@@ -1375,73 +1421,6 @@ function App() {
     );
   }
 
-  let pageComponent;
-  const commonProps = {
-    onLogout: handleLogout,
-    onNavigate: handleNavigate,
-    isSidebarOpen,
-    setIsSidebarOpen,
-    notifications,
-    openSettings: () => setIsSettingsOpen(true),
-    systemStatus,
-    session,
-  };
-
-  switch (currentPage) {
-    case 'dashboard':
-      pageComponent = <DashboardPage 
-        {...commonProps}
-        topics={topics}
-        onUpdateNotification={updateNotification}
-        onAddComment={addComment}
-        sites={sites}
-        loadingSites={loadingSites}
-        sitesError={sitesError}
-        onClearLogs={handleClearLogs}
-      />;
-      break;
-    case 'api-docs':
-      pageComponent = <ApiDocsPage {...commonProps} />;
-      break;
-    case 'audit-logs':
-      pageComponent = <AuditLogsPage {...commonProps} />;
-      break;
-    case 'how-it-works':
-      pageComponent = <HowItWorksPage {...commonProps} />;
-      break;
-    case 'site-monitoring':
-      pageComponent = <SiteMonitoringPage {...commonProps} topics={topics} />;
-      break;
-    case 'calendar':
-      pageComponent = <CalendarPage {...commonProps} />;
-      break;
-    case 'analytics':
-      pageComponent = <AnalyticsPage {...commonProps} topics={topics} />;
-      break;
-    case 'topic-manager':
-      pageComponent = <TopicManagerPage
-        {...commonProps}
-        topics={topics}
-        onAddTopic={handleAddTopic}
-        onToggleSubscription={handleToggleSubscription}
-        onDeleteTopic={handleDeleteTopic}
-      />;
-      break; 
-    default:
-      pageComponent = <DashboardPage 
-        {...commonProps}
-        topics={topics}
-        onUpdateNotification={updateNotification}
-        onAddComment={addComment}
-        sites={sites}
-        loadingSites={loadingSites}
-        sitesError={sitesError}
-        onClearLogs={handleClearLogs}
-      />;
-      break;
-
-  }
-
   return (
     <ThemeContext.Provider value={themeContextValue}>
       <div className="min-h-screen font-sans text-foreground">
@@ -1456,7 +1435,127 @@ function App() {
               topics={topics}
             />
             <div className="flex-1 flex flex-col w-full">
-              {pageComponent}
+              <Routes>
+                <Route path="/monitoring/:id" element={
+                  <SiteDetailPage
+                    session={session}
+                    onLogout={handleLogout}
+                    openSettings={() => setIsSettingsOpen(true)}
+                    isSidebarOpen={isSidebarOpen}
+                    setIsSidebarOpen={setIsSidebarOpen}
+                    notifications={notifications}
+                    systemStatus={systemStatus}
+                  />
+                } />
+                <Route path="/site-monitoring" element={
+                  <SiteMonitoringPage
+                    onLogout={handleLogout}
+                    isSidebarOpen={isSidebarOpen}
+                    setIsSidebarOpen={setIsSidebarOpen}
+                    notifications={notifications}
+                    openSettings={() => setIsSettingsOpen(true)}
+                    systemStatus={systemStatus}
+                    session={session}
+                  />
+                }/>
+
+                <Route path="/api-docs" element={ 
+                  <ApiDocsPage 
+                    onLogout={handleLogout} 
+                    onNavigate={handleNavigate} 
+                    isSidebarOpen={isSidebarOpen} 
+                    setIsSidebarOpen={setIsSidebarOpen} 
+                    notifications={notifications} 
+                    openSettings={() => setIsSettingsOpen(true)} 
+                    systemStatus={systemStatus} 
+                    session={session} 
+                  /> 
+                } />
+                <Route path="/audit-logs" element={ 
+                  <AuditLogsPage 
+                    onLogout={handleLogout} 
+                    onNavigate={handleNavigate} 
+                    isSidebarOpen={isSidebarOpen} 
+                    setIsSidebarOpen={setIsSidebarOpen} 
+                    notifications={notifications} 
+                    openSettings={() => setIsSettingsOpen(true)} 
+                    systemStatus={systemStatus} 
+                    session={session} 
+                  /> 
+                } />
+                <Route path="/how-it-works" element={ 
+                  <HowItWorksPage 
+                    onLogout={handleLogout} 
+                    onNavigate={handleNavigate} 
+                    isSidebarOpen={isSidebarOpen} 
+                    setIsSidebarOpen={setIsSidebarOpen} 
+                    notifications={notifications} 
+                    openSettings={() => setIsSettingsOpen(true)} 
+                    systemStatus={systemStatus} 
+                    session={session} 
+                  /> 
+                } />
+                <Route path="/calendar" element={ 
+                  <CalendarPage 
+                    onLogout={handleLogout} 
+                    onNavigate={handleNavigate} 
+                    isSidebarOpen={isSidebarOpen} 
+                    setIsSidebarOpen={setIsSidebarOpen} 
+                    notifications={notifications} 
+                    openSettings={() => setIsSettingsOpen(true)} 
+                    systemStatus={systemStatus} 
+                    session={session} 
+                  /> 
+                } />
+                <Route path="/analytics" element={ 
+                  <AnalyticsPage 
+                    onLogout={handleLogout} 
+                    onNavigate={handleNavigate} 
+                    isSidebarOpen={isSidebarOpen} 
+                    setIsSidebarOpen={setIsSidebarOpen} 
+                    notifications={notifications} 
+                    openSettings={() => setIsSettingsOpen(true)} 
+                    systemStatus={systemStatus} 
+                    session={session} 
+                    topics={topics} 
+                  /> 
+                } />
+                <Route path="/topic-manager" element={
+                  <TopicManagerPage
+                    onLogout={handleLogout}
+                    onNavigate={handleNavigate}
+                    isSidebarOpen={isSidebarOpen}
+                    setIsSidebarOpen={setIsSidebarOpen}
+                    notifications={notifications}
+                    openSettings={() => setIsSettingsOpen(true)}
+                    systemStatus={systemStatus}
+                    session={session}
+                    topics={topics}
+                    onAddTopic={handleAddTopic}
+                    onToggleSubscription={handleToggleSubscription}
+                    onDeleteTopic={handleDeleteTopic}
+                  />
+                }/>
+                <Route path="*" element={
+                  <DashboardPage
+                    onLogout={handleLogout}
+                    onNavigate={handleNavigate}
+                    isSidebarOpen={isSidebarOpen}
+                    setIsSidebarOpen={setIsSidebarOpen}
+                    notifications={notifications}
+                    openSettings={() => setIsSettingsOpen(true)}
+                    systemStatus={systemStatus}
+                    session={session}
+                    topics={topics}
+                    onUpdateNotification={updateNotification}
+                    onAddComment={addComment}
+                    sites={sites}
+                    loadingSites={loadingSites}
+                    sitesError={sitesError}
+                    onClearLogs={handleClearLogs}
+                  />
+                }/>
+              </Routes>
             </div>
           </div>
 

@@ -189,7 +189,7 @@ export interface Database {
           id: string;
           name: string;
           url: string;
-          region: string;
+          country: string;
           created_at: string;
           updated_at: string;
           latitude: number | null;
@@ -199,7 +199,7 @@ export interface Database {
           id?: string;
           name: string;
           url: string;
-          region?: string;
+          country?: string;
           created_at?: string;
           updated_at?: string;
           latitude?: number | null;
@@ -209,7 +209,7 @@ export interface Database {
           id?: string;
           name?: string;
           url?: string;
-          region?: string;
+          country?: string;
           created_at?: string;
           updated_at?: string;
           latitude?: number | null;
@@ -366,9 +366,17 @@ export interface Category {
 
 export type PingLog = Database['public']['Tables']['ping_logs']['Row'];
 
+export interface Incident {
+  reason: string;
+  started_at: string;
+  duration_human: string;
+  is_resolved: boolean;
+}
+
 export type MonitoredSite = Database['public']['Tables']['monitored_sites']['Row'] & {
   status?: 'online' | 'offline' | 'unknown';
   ping_logs?: PingLog[];
   latest_ping?: PingLog;
   last_checked?: string;
+  incidents?: Incident[];
 };

@@ -36,7 +36,7 @@ export const TopicManagerPage: React.FC<TopicManagerPageProps> = ({
   return (
     <>
     <Header onNavigate={onNavigate} onLogout={onLogout} notifications={notifications} isSidebarOpen={isSidebarOpen} setIsSidebarOpen={setIsSidebarOpen} openSettings={openSettings} systemStatus={systemStatus} session={session} />
-    <main className="flex-1 overflow-y-auto bg-background lg:ml-72">
+    <main className="flex-1 overflow-y-auto bg-background md:ml-72">
       <div className="p-4 sm:p-6 lg:p-8">
         <div className="flex items-center mb-6">
           <button onClick={() => onNavigate('dashboard')} className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 mr-4">

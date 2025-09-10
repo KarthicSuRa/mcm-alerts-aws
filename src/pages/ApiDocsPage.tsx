@@ -69,12 +69,17 @@ export const ApiDocsPage: React.FC<ApiDocsPageProps> = ({ onNavigate, onLogout, 
   return (
     <>
         <Header onNavigate={onNavigate} onLogout={onLogout} notifications={notifications} isSidebarOpen={isSidebarOpen} setIsSidebarOpen={setIsSidebarOpen} openSettings={openSettings} systemStatus={systemStatus} session={session} />
-        <main className="flex-1 overflow-y-auto bg-background lg:ml-72">
+        <main className="flex-1 overflow-y-auto bg-background md:ml-72">
            <div className="max-w-screen-2xl mx-auto p-4 sm:p-6 lg:p-8">
-               <div className="mb-8">
-                    <h1 className="text-4xl font-bold">API Documentation</h1>
-                    <p className="text-muted-foreground mt-1">Integration guide for MCM Alerts API</p>
-               </div>
+                <div className="flex items-center mb-8">
+                    <button onClick={() => onNavigate('dashboard')} className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 mr-4">
+                        <Icon name="arrow-left" className="h-5 w-5 text-gray-700 dark:text-gray-300" />
+                    </button>
+                    <div>
+                        <h1 className="text-4xl font-bold">API Documentation</h1>
+                        <p className="text-muted-foreground mt-1">Integration guide for MCM Alerts API</p>
+                    </div>
+                </div>
                
                <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                     <div className="lg:col-span-2 space-y-8">
