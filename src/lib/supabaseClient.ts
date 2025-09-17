@@ -1,4 +1,3 @@
-
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '../types';
 
@@ -11,3 +10,7 @@ if (!supabaseUrl || !supabaseAnonKey) {
 }
 
 export const supabase: SupabaseClient<Database> = createClient<Database>(supabaseUrl, supabaseAnonKey);
+
+export const getSupabaseFunctionUrl = (functionName: string) => {
+    return `${supabaseUrl}/functions/v1/${functionName}`;
+};

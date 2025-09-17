@@ -254,6 +254,80 @@ export interface Database {
             referencedColumns: ["id"]
           }
         ]
+      },
+      webhook_sources: {
+        Row: {
+          id: string;
+          user_id: string;
+          name: string;
+          description: string | null;
+          source_type: string;
+          created_at: string;
+          topic_id: string | null; // Added field
+        }
+        Insert: {
+          id?: string;
+          user_id: string;
+          name: string;
+          description?: string | null;
+          source_type: string;
+          created_at?: string;
+          topic_id?: string | null; // Added field
+        }
+        Update: {
+          id?: string;
+          user_id?: string;
+          name?: string;
+          description?: string | null;
+          source_type?: string;
+          created_at?: string;
+          topic_id?: string | null; // Added field
+        }
+        Relationships: [
+          {
+            foreignKeyName: "webhook_sources_user_id_fkey",
+            columns: ["user_id"],
+            isOneToOne: false,
+            referencedRelation: "users",
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "webhook_sources_topic_id_fkey",
+            columns: ["topic_id"],
+            isOneToOne: false,
+            referencedRelation: "topics",
+            referencedColumns: ["id"]
+          }
+        ]
+      },
+      webhook_events: {
+        Row: {
+          id: string;
+          source_id: string;
+          payload: any; // Using 'any' for jsonb, or you could define a more specific type
+          created_at: string;
+        }
+        Insert: {
+          id?: string;
+          source_id: string;
+          payload: any;
+          created_at?: string;
+        }
+        Update: {
+          id?: string;
+          source_id?: string;
+          payload?: any;
+          created_at?: string;
+        }
+        Relationships: [
+          {
+            foreignKeyName: "webhook_events_source_id_fkey",
+            columns: ["source_id"],
+            isOneToOne: false,
+            referencedRelation: "webhook_sources",
+            referencedColumns: ["id"]
+          }
+        ]
       }
     }
     Views: {
@@ -380,3 +454,7 @@ export type MonitoredSite = Database['public']['Tables']['monitored_sites']['Row
   last_checked?: string;
   incidents?: Incident[];
 };
+
+export type WebhookSource = Database['public']['Tables']['webhook_sources']['Row'];
+
+export type WebhookEvent = Database['public']['Tables']['webhook_events']['Row'];

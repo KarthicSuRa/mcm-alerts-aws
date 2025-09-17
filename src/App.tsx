@@ -12,6 +12,7 @@ import { CalendarPage } from './pages/CalendarPage';
 import { AnalyticsPage } from './pages/AnalyticsPage';
 import { SiteMonitoringPage } from './pages/SiteMonitoringPage';
 import { Sidebar } from './components/layout/Sidebar';
+import IntegrationPage from './pages/IntegrationPage';
 import { SettingsModal } from './components/layout/SettingsModal';
 import { NotificationToast } from './components/ui/NotificationToast';
 import { Theme, type Notification, Severity, NotificationStatus, SystemStatusData, Session, Comment, NotificationUpdatePayload, Topic, Database, MonitoredSite } from './types';
@@ -73,6 +74,7 @@ function App() {
     if (path.startsWith('/calendar')) return 'calendar';
     if (path.startsWith('/analytics')) return 'analytics';
     if (path.startsWith('/topic-manager')) return 'topic-manager';
+    if (path.startsWith('/integrations')) return 'integrations';
     return 'dashboard';
   }, [location.pathname]);
 
@@ -1495,6 +1497,17 @@ function App() {
                     session={session} 
                   /> 
                 } />
+                <Route path="/integrations" element={
+                  <IntegrationPage
+                    onLogout={handleLogout}
+                    isSidebarOpen={isSidebarOpen}
+                    setIsSidebarOpen={setIsSidebarOpen}
+                    notifications={notifications}
+                    openSettings={() => setIsSettingsOpen(true)}
+                    systemStatus={systemStatus}
+                    session={session}
+                  />
+                }/>
                 <Route path="/calendar" element={ 
                   <CalendarPage 
                     onLogout={handleLogout} 
