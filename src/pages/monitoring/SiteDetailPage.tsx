@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { Dispatch, SetStateAction } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Header } from '../../components/layout/Header';
 import { SiteHeader } from '../../components/monitoring/SiteHeader';
@@ -14,12 +14,13 @@ import { type Notification, type SystemStatusData, type Session, type PingLog } 
 
 interface SiteDetailPageProps {
   session: Session;
-  onLogout: () => void;
+  onLogout: () => Promise<void>;
   openSettings: () => void;
   isSidebarOpen: boolean;
-  setIsSidebarOpen: (open: boolean) => void;
+  setIsSidebarOpen: Dispatch<SetStateAction<boolean>>;
   notifications: Notification[];
   systemStatus: SystemStatusData;
+  onNavigate: (page: string) => void;
 }
 
 const calculateUptime = (pings: PingLog[] | undefined) => {
@@ -49,9 +50,9 @@ export const SiteDetailPage: React.FC<SiteDetailPageProps> = ({
   setIsSidebarOpen,
   notifications,
   systemStatus,
+  onNavigate,
 }) => {
   const { id } = useParams<{ id: string }>();
-  const navigate = useNavigate();
   const { site, loading, error } = useMonitoringData(id || '');
 
   const renderContent = () => {
@@ -113,7 +114,7 @@ export const SiteDetailPage: React.FC<SiteDetailPageProps> = ({
         notifications={notifications}
         systemStatus={systemStatus}
         title={site?.name || 'Site Details'}
-        onNavigate={() => navigate('/monitoring')} // Fix: Added onNavigate prop
+        onNavigate={onNavigate}
       />
       <main className="flex-1 overflow-y-auto bg-background md:ml-72">
         <div className="max-w-screen-2xl mx-auto p-4 sm:p-6 lg:p-8">

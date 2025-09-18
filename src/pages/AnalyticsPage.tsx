@@ -31,7 +31,7 @@ interface AnalyticsPageProps {
   onNavigate: (page: string) => void;
   isSidebarOpen: boolean;
   setIsSidebarOpen: (open: boolean) => void;
-  onLogout: () => void;
+  onLogout: () => Promise<void>;
   openSettings: () => void;
   systemStatus: SystemStatusData;
   topics: Topic[];
@@ -178,7 +178,7 @@ export const AnalyticsPage: React.FC<AnalyticsPageProps> = ({
 
     return (
     <>
-        <Header onNavigate={onNavigate} onLogout={onLogout} notifications={notifications} isSidebarOpen={isSidebarOpen} setIsSidebarOpen={setIsSidebarOpen} openSettings={openSettings} systemStatus={systemStatus} session={session} />
+        <Header onLogout={onLogout} notifications={notifications} isSidebarOpen={isSidebarOpen} setIsSidebarOpen={setIsSidebarOpen} openSettings={openSettings} systemStatus={systemStatus} session={session} onNavigate={onNavigate} />
         <main className="flex-1 overflow-y-auto bg-slate-50 dark:bg-slate-900 md:ml-72">
             <div className="max-w-screen-xl mx-auto p-4 sm:p-6 lg:p-8">
                 <div className="flex flex-col sm:flex-row items-start sm:items-center sm:justify-between mb-8">
@@ -221,7 +221,7 @@ export const AnalyticsPage: React.FC<AnalyticsPageProps> = ({
                                                 ? 'bg-indigo-600 text-white shadow-sm'
                                                 : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-600'
                                         }`}>
-                                        {format(month, 'MMMM')}
+                                        {format(month, 'MMMAA')}
                                     </button>
                                 ))}
                             </div>

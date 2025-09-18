@@ -1447,6 +1447,7 @@ function App() {
                     setIsSidebarOpen={setIsSidebarOpen}
                     notifications={notifications}
                     systemStatus={systemStatus}
+                    onNavigate={handleNavigate}
                   />
                 } />
                 <Route path="/site-monitoring" element={
@@ -1458,9 +1459,9 @@ function App() {
                     openSettings={() => setIsSettingsOpen(true)}
                     systemStatus={systemStatus}
                     session={session}
+                    onNavigate={handleNavigate}
                   />
                 }/>
-
                 <Route path="/api-docs" element={ 
                   <ApiDocsPage 
                     onLogout={handleLogout} 
@@ -1506,6 +1507,7 @@ function App() {
                     openSettings={() => setIsSettingsOpen(true)}
                     systemStatus={systemStatus}
                     session={session}
+                    onNavigate={handleNavigate}
                   />
                 }/>
                 <Route path="/calendar" element={ 

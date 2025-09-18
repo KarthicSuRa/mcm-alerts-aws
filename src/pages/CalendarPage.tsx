@@ -8,7 +8,7 @@ interface CalendarPageProps {
   onNavigate: (page: string) => void;
   isSidebarOpen: boolean;
   setIsSidebarOpen: (open: boolean) => void;
-  onLogout: () => void;
+  onLogout: () => Promise<void>;
   openSettings: () => void;
   systemStatus: SystemStatusData;
   notifications: Notification[];
@@ -32,7 +32,7 @@ export const CalendarPage: React.FC<CalendarPageProps> = ({ onNavigate, isSideba
 
   return (
     <>
-      <Header onNavigate={onNavigate} onLogout={onLogout} notifications={notifications} isSidebarOpen={isSidebarOpen} setIsSidebarOpen={setIsSidebarOpen} openSettings={openSettings} systemStatus={systemStatus} session={session} />
+      <Header onNavigate={onNavigate} onLogout={onLogout} notifications={notifications} isSidebarOpen={isSidebarOpen} setIsSidebarOpen={setIsSidebarOpen} openSettings={openSettings} systemStatus={systemStatus} session={session} title="Calendar" />
       <main className="flex-1 overflow-y-auto bg-background md:ml-72">
         <div className="p-4 md:p-6 lg:p-8 text-foreground">
           <div className="flex items-center justify-between mb-6">

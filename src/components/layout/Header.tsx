@@ -5,7 +5,7 @@ import { Session, Notification, SystemStatusData } from '../../types';
 import { SystemStatusPopover } from './SystemStatusPopover';
 
 interface HeaderProps {
-  onLogout: () => void;
+  onLogout: () => Promise<void>;
   isSidebarOpen: boolean;
   setIsSidebarOpen: (open: boolean) => void;
   openSettings: () => void;

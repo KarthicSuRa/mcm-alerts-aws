@@ -5,7 +5,7 @@ import { Notification, SystemStatusData, Session } from '../types';
 
 interface ApiDocsPageProps {
   onNavigate: (page: string) => void;
-  onLogout: () => void;
+  onLogout: () => Promise<void>;
   isSidebarOpen: boolean;
   setIsSidebarOpen: (open: boolean) => void;
   notifications: Notification[];
@@ -68,7 +68,7 @@ export const ApiDocsPage: React.FC<ApiDocsPageProps> = ({ onNavigate, onLogout, 
 
   return (
     <>
-        <Header onNavigate={onNavigate} onLogout={onLogout} notifications={notifications} isSidebarOpen={isSidebarOpen} setIsSidebarOpen={setIsSidebarOpen} openSettings={openSettings} systemStatus={systemStatus} session={session} />
+        <Header onLogout={onLogout} notifications={notifications} isSidebarOpen={isSidebarOpen} setIsSidebarOpen={setIsSidebarOpen} openSettings={openSettings} systemStatus={systemStatus} session={session} onNavigate={onNavigate} />
         <main className="flex-1 overflow-y-auto bg-background md:ml-72">
            <div className="max-w-screen-2xl mx-auto p-4 sm:p-6 lg:p-8">
                 <div className="flex items-center mb-8">

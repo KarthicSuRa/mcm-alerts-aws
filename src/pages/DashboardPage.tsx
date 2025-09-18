@@ -12,7 +12,7 @@ import { supabase } from '../lib/supabaseClient';
 interface DashboardPageProps {
   notifications: Notification[];
   onNavigate: (page: string) => void;
-  onLogout: () => void;
+  onLogout: () => Promise<void>;
   isSidebarOpen: boolean;
   setIsSidebarOpen: (open: boolean) => void;
   openSettings: () => void;
@@ -145,6 +145,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                 openSettings={openSettings} 
                 systemStatus={systemStatus} 
                 session={session} 
+                title="Dashboard"
             />
             <main className="flex-1 overflow-y-auto bg-background md:ml-72">
                 <div className="max-w-screen-2xl mx-auto p-4 sm:p-6 lg:p-8">

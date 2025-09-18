@@ -13,7 +13,7 @@ interface TopicManagerPageProps {
   onNavigate: (page: string) => void;
   isSidebarOpen: boolean;
   setIsSidebarOpen: (open: boolean) => void;
-  onLogout: () => void;
+  onLogout: () => Promise<void>;
   openSettings: () => void;
   systemStatus: SystemStatusData;
   notifications: Notification[];
@@ -35,7 +35,7 @@ export const TopicManagerPage: React.FC<TopicManagerPageProps> = ({
 }) => {
   return (
     <>
-    <Header onNavigate={onNavigate} onLogout={onLogout} notifications={notifications} isSidebarOpen={isSidebarOpen} setIsSidebarOpen={setIsSidebarOpen} openSettings={openSettings} systemStatus={systemStatus} session={session} />
+    <Header onNavigate={onNavigate} onLogout={onLogout} notifications={notifications} isSidebarOpen={isSidebarOpen} setIsSidebarOpen={setIsSidebarOpen} openSettings={openSettings} systemStatus={systemStatus} session={session} title="Topic Manager" />
     <main className="flex-1 overflow-y-auto bg-background md:ml-72">
       <div className="p-4 sm:p-6 lg:p-8">
         <div className="flex items-center mb-6">
