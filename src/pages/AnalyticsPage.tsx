@@ -51,7 +51,7 @@ const formatMinutes = (minutes: number) => {
   return `${hours}h ${remainingMinutes}m`;
 };
 
-const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8', '#ff4d4d'];
+const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8', '#9ca3af']; // Added gray for 'Other'
 
 const CustomTooltip = ({ active, payload, label, month }: any) => {
     if (active && payload && payload.length) {
@@ -65,6 +65,22 @@ const CustomTooltip = ({ active, payload, label, month }: any) => {
     return null;
   };
 
+const RADIAN = Math.PI / 180;
+const renderCustomizedLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, percent }: { cx: number, cy: number, midAngle: number, innerRadius: number, outerRadius: number, percent: number }) => {
+    const radius = innerRadius + (outerRadius - innerRadius) * 0.5;
+    const x = cx + radius * Math.cos(-midAngle * RADIAN);
+    const y = cy + radius * Math.sin(-midAngle * RADIAN);
+
+    if (percent * 100 < 5) { // Don't render label for small slices
+        return null;
+    }
+
+    return (
+        <text x={x} y={y} fill="white" textAnchor={x > cx ? 'start' : 'end'} dominantBaseline="central" fontSize={12} fontWeight="bold">
+            {`${(percent * 100).toFixed(0)}%`}
+        </text>
+    );
+};
 
 export const AnalyticsPage: React.FC<AnalyticsPageProps> = ({ 
     notifications, 
@@ -78,6 +94,7 @@ export const AnalyticsPage: React.FC<AnalyticsPageProps> = ({
     topics
 }) => {
     const [selectedMonth, setSelectedMonth] = useState(startOfMonth(new Date()));
+    const [isOtherTopicsModalOpen, setIsOtherTopicsModalOpen] = useState(false);
 
     const monthOptions = useMemo(() => {
         return Array.from({ length: 6 }, (_, i) => startOfMonth(subMonths(new Date(), i)));
@@ -110,13 +127,33 @@ export const AnalyticsPage: React.FC<AnalyticsPageProps> = ({
             return acc;
         }, {} as Record<string, number>);
 
-        const pieData = Object.entries(topicCounts).map(([topicId, count]) => {
-            const topic = topics.find(t => t.id === topicId);
-            return {
-                name: topic ? topic.name : 'General',
-                value: count
-            }
-        });
+        const sortedTopics = Object.entries(topicCounts)
+            .map(([topicId, count]) => {
+                const topic = topics.find(t => t.id === topicId);
+                return {
+                    name: topic ? topic.name : 'General',
+                    value: count
+                };
+            })
+            .sort((a, b) => b.value - a.value);
+
+        const MAX_SLICES = 5; // Show top 5 topics + "Other"
+        let pieData;
+        let otherSlicesForModal: { name: string, value: number }[] = [];
+
+        if (sortedTopics.length > MAX_SLICES) {
+            const topSlices = sortedTopics.slice(0, MAX_SLICES);
+            const otherSlices = sortedTopics.slice(MAX_SLICES);
+            const otherSliceValue = otherSlices.reduce((acc, slice) => acc + slice.value, 0);
+            
+            pieData = [
+                ...topSlices,
+                { name: 'Other', value: otherSliceValue }
+            ];
+            otherSlicesForModal = otherSlices;
+        } else {
+            pieData = sortedTopics;
+        }
 
         const daysInMonth = eachDayOfInterval({ start: startDate, end: endDate });
         const dailyAlerts = daysInMonth.map(day => ({
@@ -130,10 +167,16 @@ export const AnalyticsPage: React.FC<AnalyticsPageProps> = ({
             if (entry) entry.alerts++;
         });
 
-        return { mtta, mttr, totalAlerts, pieData, dailyAlerts };
+        return { mtta, mttr, totalAlerts, pieData, dailyAlerts, otherSlicesForModal };
     }, [notifications, topics, selectedMonth]);
 
-    const { mtta, mttr, totalAlerts, pieData, dailyAlerts } = filteredData;
+    const { mtta, mttr, totalAlerts, pieData, dailyAlerts, otherSlicesForModal } = filteredData;
+
+    const handlePieClick = (data: any) => {
+        if (data.name === 'Other' && otherSlicesForModal.length > 0) {
+            setIsOtherTopicsModalOpen(true);
+        }
+    };
 
     const handleGenerateReport = () => {
         const monthName = format(selectedMonth, 'MMMM yyyy');
@@ -221,7 +264,7 @@ export const AnalyticsPage: React.FC<AnalyticsPageProps> = ({
                                                 ? 'bg-indigo-600 text-white shadow-sm'
                                                 : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-600'
                                         }`}>
-                                        {format(month, 'MMMAA')}
+                                        {format(month, 'MMM yy')}
                                     </button>
                                 ))}
                             </div>
@@ -241,11 +284,22 @@ export const AnalyticsPage: React.FC<AnalyticsPageProps> = ({
                          {pieData.length > 0 ? (
                             <ResponsiveContainer width="100%" height={300}>
                                 <PieChart>
-                                    <Pie data={pieData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={100} label>
+                                    <Pie 
+                                        data={pieData} 
+                                        dataKey="value" 
+                                        nameKey="name" 
+                                        cx="50%" 
+                                        cy="50%" 
+                                        outerRadius={110} 
+                                        labelLine={false}
+                                        label={renderCustomizedLabel}
+                                        onClick={handlePieClick}
+                                        style={{ cursor: otherSlicesForModal.length > 0 ? 'pointer' : 'default' }}
+                                    >
                                         {pieData.map((entry, index) => <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />)}
                                     </Pie>
                                     <Tooltip formatter={(value, name) => [value, name]} />
-                                    <Legend iconSize={10} />
+                                    <Legend wrapperStyle={{ fontSize: '12px' }}/>
                                 </PieChart>
                             </ResponsiveContainer>
                          ) : (
@@ -254,9 +308,40 @@ export const AnalyticsPage: React.FC<AnalyticsPageProps> = ({
                     </div>
                 </div>
             </div>
+             <OtherTopicsModal
+                isOpen={isOtherTopicsModalOpen}
+                onClose={() => setIsOtherTopicsModalOpen(false)}
+                data={otherSlicesForModal}
+            />
         </main>
     </>
   );
+};
+
+
+const OtherTopicsModal: React.FC<{ isOpen: boolean; onClose: () => void; data: { name: string; value: number }[] }> = ({ isOpen, onClose, data }) => {
+    if (!isOpen) return null;
+
+    return (
+        <div className="fixed inset-0 bg-black bg-opacity-60 flex justify-center items-center z-50 transition-opacity animate-fade-in-fast" onClick={onClose}>
+            <div className="bg-white dark:bg-slate-800 rounded-lg shadow-xl p-6 w-full max-w-md m-4 animate-scale-up" onClick={e => e.stopPropagation()}>
+                <div className="flex justify-between items-center mb-4">
+                    <h3 className="text-xl font-bold text-slate-800 dark:text-white">Other Topics</h3>
+                    <button onClick={onClose} className="p-2 rounded-full hover:bg-slate-200 dark:hover:bg-slate-700">
+                        <Icon name="x" className="w-5 h-5 text-slate-600 dark:text-slate-300" />
+                    </button>
+                </div>
+                <div className="space-y-3 max-h-80 overflow-y-auto pr-2">
+                    {data.sort((a,b) => b.value - a.value).map((topic, index) => (
+                        <div key={index} className="flex justify-between items-center text-sm p-2 rounded-md hover:bg-slate-100 dark:hover:bg-slate-700/50">
+                            <span className="text-slate-600 dark:text-slate-300 truncate pr-4">{topic.name}</span>
+                            <span className="font-semibold text-slate-800 dark:text-white bg-slate-100 dark:bg-slate-700 px-2 py-1 rounded-md">{topic.value}</span>
+                        </div>
+                    ))}
+                </div>
+            </div>
+        </div>
+    );
 };
 
 // StatCard component for a consistent look
