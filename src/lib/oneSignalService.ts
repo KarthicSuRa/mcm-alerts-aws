@@ -59,6 +59,50 @@ export class OneSignalService {
     this.initPromise = this.doInitialize();
     return this.initPromise;
   }
+  // In src/lib/oneSignalService.ts
+
+  // Add this method inside the OneSignalService class
+    // In src/lib/oneSignalService.ts
+
+  public async login(externalUserId: string): Promise<void> {
+    if (!this.initialized) {
+      console.warn('OneSignal not initialized, cannot log in.');
+      await this.initialize(); // Try to initialize first
+    }
+    if (!this.initialized) {
+      console.error('OneSignal could not be initialized. Aborting login.');
+      return;
+    }
+    
+    try {
+      console.log(`Setting OneSignal external user ID: ${externalUserId}`);
+      // CORRECT: Use window.OneSignal
+      await window.OneSignal.setExternalUserId(externalUserId);
+      console.log('✅ OneSignal external user ID set.');
+    } catch (error) {
+      console.error('❌ Failed to set OneSignal external user ID:', error);
+      // We'll re-throw to let the caller know something went wrong.
+      throw error;
+    }
+  }
+
+  public async logout(): Promise<void> {
+    if (!this.initialized) {
+      console.warn('OneSignal not initialized, cannot log out.');
+      return;
+    }
+
+    try {
+      console.log('Removing OneSignal external user ID.');
+      // CORRECT: Use window.OneSignal
+      await window.OneSignal.removeExternalUserId();
+      console.log('✅ OneSignal external user ID removed.');
+    } catch (error) {
+      console.error('❌ Failed to remove OneSignal external user ID:', error);
+      throw error;
+    }
+  }
+
 
   private async doInitialize(): Promise<void> {
     if (this.initializing) return;

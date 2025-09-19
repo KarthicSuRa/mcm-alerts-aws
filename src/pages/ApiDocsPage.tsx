@@ -35,36 +35,21 @@ const CodeBlock: React.FC<{ code: string }> = ({ code }) => {
 };
 
 export const ApiDocsPage: React.FC<ApiDocsPageProps> = ({ onNavigate, onLogout, isSidebarOpen, setIsSidebarOpen, notifications, openSettings, systemStatus, session }) => {
-  const [activeTab, setActiveTab] = useState('siteDown');
   const endpointUrl = 'https://ledvmlsdazrzntvzbeww.supabase.co/functions/v1/hyper-worker';
 
-  const requestExamples: { [key: string]: string } = {
-    siteDown: JSON.stringify({
-        type: 'site_down',
-        title: 'Site Down Alert',
-        message: 'example.com is not responding',
-        site: 'example.com',
-        priority: 'high',
-        timestamp: new Date().toISOString()
-    }, null, 2),
-    serverAlert: JSON.stringify({
-        type: 'server_alert',
-        title: 'CPU Usage High',
-        message: 'CPU on prod-db-01 is at 95%',
-        priority: 'medium',
-        timestamp: new Date().toISOString()
-    }, null, 2),
-    custom: JSON.stringify({
-        type: 'custom',
-        title: 'Custom Alert',
-        message: 'A custom event has occurred.',
-        priority: 'low',
-        details: {
-            info: 'extra details here'
-        },
-        timestamp: new Date().toISOString()
-    }, null, 2),
-  };
+  // Updated example to reflect new required fields
+  const requestExample = JSON.stringify({
+      topic_name: "Deployments",
+      priority: "high",
+      title: "Production Deploy Successful",
+      message: "Version 2.1.0 has been deployed to production.",
+      // Optional fields
+      site: "prod-web-01",
+      details: {
+          commit: "a1b2c3d",
+          author: "jane.doe@example.com"
+      }
+  }, null, 2);
 
   return (
     <>
@@ -106,29 +91,14 @@ export const ApiDocsPage: React.FC<ApiDocsPageProps> = ({ onNavigate, onLogout, 
                             <p className="text-xs text-muted-foreground mt-2">Method: POST | Auth: None Required | Content-Type: application/json</p>
                         </div>
 
-                        {/* Request Examples */}
+                        {/* Request Example */}
                         <div className="p-6 bg-card rounded-xl border border-border">
-                            <h2 className="text-xl font-semibold mb-3">Request Examples</h2>
-                            <div className="border-b border-border">
-                                 <nav className="-mb-px flex space-x-4" aria-label="Tabs">
-                                    {Object.keys(requestExamples).map((tab) => (
-                                        <button
-                                            key={tab}
-                                            onClick={() => setActiveTab(tab)}
-                                            className={`${
-                                                activeTab === tab
-                                                ? 'border-primary text-primary'
-                                                : 'border-transparent text-muted-foreground hover:text-foreground hover:border-border'
-                                            } whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm capitalize`}
-                                        >
-                                            {tab.replace(/([A-Z])/g, ' $1')}
-                                        </button>
-                                    ))}
-                                </nav>
-                            </div>
+                            <h2 className="text-xl font-semibold mb-3">Request Payload</h2>
                              <div className="mt-4">
-                                <h3 className="text-sm font-semibold mb-2">JSON Payload</h3>
-                                <CodeBlock code={requestExamples[activeTab]} />
+                                <p className="text-sm text-card-foreground/80 mb-4">
+                                    Send a JSON object with the following fields. The alert will be sent to all users subscribed to the specified topic.
+                                </p>
+                                <CodeBlock code={requestExample} />
                              </div>
                         </div>
                     </div>
@@ -136,29 +106,29 @@ export const ApiDocsPage: React.FC<ApiDocsPageProps> = ({ onNavigate, onLogout, 
                     <div className="space-y-6">
                         {/* Quick Reference */}
                          <div className="p-6 bg-card rounded-xl border border-border">
-                            <h3 className="text-lg font-semibold mb-4">Quick Reference</h3>
+                            <h3 className="text-lg font-semibold mb-4">Field Reference</h3>
                             <div className="space-y-4 text-sm">
-                                <div>
-                                    <h4 className="font-semibold mb-2">Priority Levels</h4>
-                                    <div className="flex gap-2 mt-1">
-                                        <span className="px-2 py-0.5 text-xs rounded-full bg-gray-500/10 text-gray-500">low</span>
-                                        <span className="px-2 py-0.5 text-xs rounded-full bg-primary/10 text-primary">medium</span>
-                                        <span className="px-2 py-0.5 text-xs rounded-full bg-red-500/10 text-red-500">high</span>
-                                    </div>
-                                </div>
                                 <div>
                                     <h4 className="font-semibold mb-2">Required Fields</h4>
                                     <ul className="list-disc list-inside text-card-foreground/80 mt-1 space-y-1">
-                                        <li><code className="text-xs bg-muted rounded px-1 py-0.5">type</code></li>
-                                        <li><code className="text-xs bg-muted rounded px-1 py-0.5">title</code></li>
-                                        <li><code className="text-xs bg-muted rounded px-1 py-0.5">message</code></li>
+                                        <li><code className="text-xs bg-muted rounded px-1 py-0.5">topic_name</code>: The name of the topic to publish to.</li>
+                                        <li><code className="text-xs bg-muted rounded px-1 py-0.5">priority</code>: <code className="text-xs">low</code>, <code className="text-xs">medium</code>, or <code className="text-xs">high</code>.</li>
+                                        <li><code className="text-xs bg-muted rounded px-1 py-0.5">title</code>: The main title of the alert.</li>
+                                        <li><code className="text-xs bg-muted rounded px-1 py-0.5">message</code>: The detailed body of the alert.</li>
+                                    </ul>
+                                </div>
+                                <div>
+                                    <h4 className="font-semibold mb-2">Optional Fields</h4>
+                                    <ul className="list-disc list-inside text-card-foreground/80 mt-1 space-y-1">
+                                        <li><code className="text-xs bg-muted rounded px-1 py-0.5">site</code>: A string identifying a specific server or site.</li>
+                                        <li><code className="text-xs bg-muted rounded px-1 py-0.5">details</code>: A JSON object for any extra data.</li>
                                     </ul>
                                 </div>
                                 <div>
                                     <h4 className="font-semibold mb-2">Response Codes</h4>
                                      <ul className="list-disc list-inside text-card-foreground/80 mt-1 space-y-1">
                                         <li><span className="font-mono text-green-500">200</span>: Success</li>
-                                        <li><span className="font-mono text-yellow-500">400</span>: Bad Request</li>
+                                        <li><span className="font-mono text-yellow-500">400</span>: Bad Request (e.g., missing fields)</li>
                                         <li><span className="font-mono text-red-500">500</span>: Server Error</li>
                                     </ul>
                                 </div>
@@ -167,7 +137,7 @@ export const ApiDocsPage: React.FC<ApiDocsPageProps> = ({ onNavigate, onLogout, 
                          {/* Test API */}
                           <div className="p-6 bg-card rounded-xl border border-border">
                              <h3 className="text-lg font-semibold mb-2">Test API</h3>
-                             <p className="text-sm text-muted-foreground mb-4">Use the dashboard to test notifications with different priority levels.</p>
+                             <p className="text-sm text-muted-foreground mb-4">Use the dashboard to send test alerts to any topic.</p>
                              <button onClick={() => onNavigate('dashboard')} className="w-full text-white bg-black hover:bg-gray-800 dark:text-black dark:bg-white dark:hover:bg-gray-200 focus:outline-none focus:ring-4 focus:ring-black/50 font-medium rounded-lg text-sm px-5 py-2.5">
                                  Go to Dashboard
                              </button>

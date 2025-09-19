@@ -667,78 +667,54 @@ function App() {
     }
   }, [soundEnabled, snoozedUntil, topics, addToast]);
 
-  // OneSignal Initialization - Only when session exists and not already initialized
+  // In src/App.tsx
+
+  // OneSignal Initialization - Handles login and state persistence
   useEffect(() => {
-    if (!session || oneSignalInitialized.current || initializationInProgress.current || authLoading) {
+    if (!session || authLoading) {
       return;
     }
     
+    // This flag prevents re-initialization within the same session
+    if (oneSignalInitialized.current) {
+        return;
+    }
+
     const initOneSignal = async () => {
+      if (initializationInProgress.current) return;
+
       try {
         initializationInProgress.current = true;
         setIsPushLoading(true);
         console.log('🔔 Initializing OneSignal...');
         
         await oneSignalService.initialize();
+
+        // --- FIX: Log user into OneSignal for persistence ---
+        try {
+          console.log(`🔔 Logging into OneSignal with external user ID: ${session.user.id}`);
+          await oneSignalService.login(session.user.id);
+        } catch (error) {
+           console.error('❌ OneSignal login failed:', error);
+           // Non-fatal, proceed with initialization
+        }
         
         const isSubscribed = await oneSignalService.isSubscribed();
-        console.log('🔔 OneSignal subscription status:', isSubscribed);
+        console.log('🔔 OneSignal subscription status on load:', isSubscribed);
         setIsPushEnabled(isSubscribed);
         
-        // Set up subscription change listener
         oneSignalService.onSubscriptionChange((subscribed: boolean) => {
           console.log('🔔 OneSignal subscription changed:', subscribed);
           setIsPushEnabled(subscribed);
         });
 
-        // Set up foreground notifications
-        oneSignalService.setupForegroundNotifications((notification) => {
-          console.log('🔔 Handling foreground notification:', notification);
-          
-          // Generate consistent ID for database storage
-          const dbNotificationId = `onesignal-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-          
-          const newNotification: ExtendedNotification = {
-            id: dbNotificationId, // Use our generated ID for database
-            type: 'server_alert',
-            title: notification.title || 'New Notification',
-            message: notification.body || notification.message || '',
-            severity: mapOneSignalSeverity(notification),
-            status: 'new' as NotificationStatus,
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-            timestamp: new Date().toISOString(),
-            topic_id: notification.data?.topic_id || null,
-            site: notification.data?.site || null,
-            comments: [],
-            oneSignalId: notification.oneSignalId // Keep track of original OneSignal ID
-          };
-          
-          setNotifications(prev => {
-            const exists = prev.some(n => n.id === newNotification.id || n.oneSignalId === notification.oneSignalId);
-            if (exists) {
-              console.log('🔄 Notification already exists, skipping');
-              return prev;
-            }
-            console.log('➕ Adding new OneSignal notification to list');
-            return [newNotification, ...prev];
-          });
-          
-          handleNewNotification(newNotification);
-        });
-        
-        // Save player ID if subscribed
-        if (isSubscribed) {
-          try {
-            await oneSignalService.savePlayerIdToDatabase(session.user.id);
-            console.log('🔔 Player ID saved to database');
-          } catch (error) {
-            console.warn('⚠️ Failed to save player ID to database:', error);
-          }
-        }
+        // The setup for foreground notifications is now more robust.
+        // I've passed the handleNewNotification callback directly.
+        oneSignalService.setupForegroundNotifications(handleNewNotification);
         
         oneSignalInitialized.current = true;
         console.log('✅ OneSignal initialization completed');
+
       } catch (error) {
         console.error('❌ Failed to initialize OneSignal:', error);
       } finally {
@@ -747,13 +723,10 @@ function App() {
       }
     };
 
-    // Delay OneSignal initialization to not block login
-    const timer = setTimeout(() => {
-      initOneSignal();
-    }, 500);
+    initOneSignal();
 
-    return () => clearTimeout(timer);
-  }, [session, authLoading, mapOneSignalSeverity, handleNewNotification]);
+  }, [session, authLoading, oneSignalService, handleNewNotification]);
+
 
   const updateNotification = useCallback(async (notificationId: string, updates: NotificationUpdatePayload) => {
     console.log('🔧 Updating notification:', { notificationId, updates });
@@ -1175,27 +1148,31 @@ function App() {
     setTheme(prevTheme => (prevTheme === 'light' ? 'dark' : 'light'));
   }, []);
 
+  // In src/App.tsx
+
   const handleLogout = useCallback(async () => {
-    if (isPushEnabled && session) {
-      try {
-        await oneSignalService.removePlayerIdFromDatabase(session.user.id);
-      } catch (error) {
-        console.error('Error removing player ID on logout:', error);
-      }
+    console.log('➡️ Starting logout process...');
+    
+    try {
+      // --- FIX: Log user out of OneSignal ---
+      // This disassociates the user from the device, ensuring the next
+      // user to log in doesn't receive their push notifications.
+      await oneSignalService.logout();
+      console.log('🔔 Logged out from OneSignal');
+    } catch (error) {
+      console.error('❌ Error logging out from OneSignal (non-fatal):', error);
     }
     
-    // Reset all refs
+    // Sign out from Supabase
+    await supabase.auth.signOut();
+
+    // Reset all application state
+    setUnauthedPage('landing');
     dataFetched.current = false;
     oneSignalInitialized.current = false;
-    initializationInProgress.current = false;
-    
-    // Clear pending updates
-    pendingUpdates.current.forEach(timeout => clearTimeout(timeout));
-    pendingUpdates.current.clear();
-    
-    await supabase.auth.signOut();
-    setUnauthedPage('landing');
-  }, [isPushEnabled, session]);
+
+  }, [oneSignalService]); // Dependencies are now cleaner
+
 
   const handleNavigate = useCallback((page: string) => {
     if (session) {
@@ -1307,43 +1284,59 @@ function App() {
 
     try {
       if (topic.subscribed && topic.subscription_id) {
+        // --- Unsubscribe ---
         const { error } = await supabase.from('topic_subscriptions').delete().eq('id', topic.subscription_id);
+        
         if (error) {
           console.error("Error unsubscribing:", error);
           alert(`Failed to unsubscribe: ${error.message}`);
           return;
-        } 
-        
-        if (isPushEnabled) {
-          try {
-            await oneSignalService.removeUserTags([`topic_${topic.id}`]);
-            console.log(`Removed OneSignal tag for topic: ${topic.name}`);
-          } catch (error) {
-            console.warn('Error removing OneSignal tag (non-critical):', error);
-          }
         }
+        
+        console.log(`✅ Unsubscribed from ${topic.name}`);
+        
+        // --- FIX: Update local state on success ---
+        setTopics(prev => prev.map(t => 
+          t.id === topic.id ? { ...t, subscribed: false, subscription_id: undefined } : t
+        ));
+
+        // Update OneSignal tag (fire and forget)
+        if (isPushEnabled) {
+          oneSignalService.removeUserTags([`topic_${topic.id}`]).catch(e => console.warn('Failed to remove OneSignal tag', e));
+        }
+
       } else {
-        const { error } = await supabase.from('topic_subscriptions').insert([{ user_id: session.user.id, topic_id: topic.id }]);
+        // --- Subscribe ---
+        const { data, error } = await supabase
+          .from('topic_subscriptions')
+          .insert([{ user_id: session.user.id, topic_id: topic.id }])
+          .select() // We need the new subscription ID
+          .single();
+          
         if (error) {
           console.error("Error subscribing:", error);
           alert(`Failed to subscribe: ${error.message}`);
           return;
         }
+
+        console.log(`✅ Subscribed to ${topic.name}`);
         
+        // --- FIX: Update local state on success ---
+        setTopics(prev => prev.map(t => 
+          t.id === topic.id ? { ...t, subscribed: true, subscription_id: data.id } : t
+        ));
+        
+        // Update OneSignal tag (fire and forget)
         if (isPushEnabled) {
-          try {
-            await oneSignalService.setUserTags({ [`topic_${topic.id}`]: '1' });
-            console.log(`Added OneSignal tag for topic: ${topic.name}`);
-          } catch (error) {
-            console.warn('Error setting OneSignal tag (non-critical):', error);
-          }
+          oneSignalService.setUserTags({ [`topic_${topic.id}`]: '1' }).catch(e => console.warn('Failed to set OneSignal tag', e));
         }
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error toggling subscription:', error);
       alert('Failed to update subscription. Please try again.');
     }
   }, [session, isPushEnabled]);
+
 
   const handleDeleteTopic = useCallback(async (topic: Topic) => {
     if (!session) return;
