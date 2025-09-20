@@ -60,6 +60,7 @@ export interface Database {
           updated_at: string
           name: string
           description: string | null
+          team_id: string | null
         }
         Insert: {
           id?: string
@@ -67,6 +68,7 @@ export interface Database {
           updated_at?: string
           name: string
           description?: string | null
+          team_id?: string | null
         }
         Update: {
           id?: string
@@ -74,8 +76,17 @@ export interface Database {
           updated_at?: string
           name?: string
           description?: string | null
+          team_id?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "topics_team_id_fkey",
+            columns: ["team_id"],
+            isOneToOne: false,
+            referencedRelation: "teams",
+            referencedColumns: ["id"]
+          }
+        ]
       }
       topic_subscriptions: {
         Row: {
@@ -328,6 +339,100 @@ export interface Database {
             referencedColumns: ["id"]
           }
         ]
+      },
+      profiles: {
+        Row: {
+          id: string
+          full_name: string | null
+          email: string | null
+          app_role: string
+        }
+        Insert: {
+          id: string
+          full_name?: string | null
+          email?: string | null
+          app_role?: string
+        }
+        Update: {
+          id?: string
+          full_name?: string | null
+          email?: string | null
+          app_role?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "profiles_id_fkey"
+            columns: ["id"]
+            isOneToOne: true
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          }
+        ]
+      },
+      teams: {
+        Row: {
+          id: string
+          name: string
+          created_at: string | null
+          created_by: string | null
+        }
+        Insert: {
+          id?: string
+          name: string
+          created_at?: string | null
+          created_by?: string | null
+        }
+        Update: {
+          id?: string
+          name?: string
+          created_at?: string | null
+          created_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "teams_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          }
+        ]
+      },
+      team_members: {
+        Row: {
+          team_id: string
+          user_id: string
+          team_role: string
+          created_at: string | null
+        }
+        Insert: {
+          team_id: string
+          user_id: string
+          team_role?: string
+          created_at?: string | null
+        }
+        Update: {
+          team_id?: string
+          user_id?: string
+          team_role?: string
+          created_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "team_members_team_id_fkey"
+            columns: ["team_id"]
+            isOneToOne: false
+            referencedRelation: "teams"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "team_members_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          }
+        ]
       }
     }
     Views: {
@@ -392,6 +497,7 @@ export interface Topic {
   updated_at: string;
   subscribed?: boolean;
   subscription_id?: string;
+  team_id: string | null;
 }
 
 export interface AuditLog {

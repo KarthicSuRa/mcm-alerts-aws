@@ -9,6 +9,7 @@ interface SidebarProps {
   setIsSidebarOpen: (isOpen: boolean) => void;
   onSendTestAlert: () => void;
   topics: Topic[];
+  profile: any | null;
 }
 
 const navItems = [
@@ -28,7 +29,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
     onNavigate, 
     isSidebarOpen, 
     setIsSidebarOpen,
-    onSendTestAlert
+    onSendTestAlert,
+    profile
 }) => {
     return (
         <>
@@ -59,6 +61,20 @@ export const Sidebar: React.FC<SidebarProps> = ({
                             {item.name}
                         </a>
                     ))}
+                    {profile && profile.app_role === 'super_admin' && (
+                        <a
+                            href="#"
+                            onClick={(e) => { e.preventDefault(); onNavigate('user-management'); }}
+                            className={`flex items-center gap-4 rounded-md px-3 py-3 text-base font-medium transition-all ${
+                                currentPage === 'user-management'
+                                    ? 'bg-slate-800 text-white'
+                                    : 'hover:bg-slate-700/50 hover:text-white'
+                            }`}
+                        >
+                            <Icon name="users" className="h-6 w-6" />
+                            User Management
+                        </a>
+                    )}
                 </nav>
 
                 <div className="px-4 py-4 mt-auto border-t border-slate-700">

@@ -21,12 +21,14 @@ import { OneSignalService } from './lib/oneSignalService';
 import { ThemeContext } from './contexts/ThemeContext';
 import { Routes, Route, useNavigate, useLocation } from 'react-router-dom';
 import { SiteDetailPage } from './pages/monitoring/SiteDetailPage';
+import UserManagementPage from './pages/UserManagementPage';
 import ErrorBoundary from './components/ui/ErrorBoundary';
 
 type NotificationFromDB = Database['public']['Tables']['notifications']['Row'];
 type CommentFromDB = Database['public']['Tables']['comments']['Row'];
 type TopicFromDB = Database['public']['Tables']['topics']['Row'];
 type SubscriptionFromDB = Database['public']['Tables']['topic_subscriptions']['Row'];
+type Team = Database['public']['Tables']['teams']['Row'];
 
 // Extended notification type to include OneSignal ID
 interface ExtendedNotification extends Notification {
@@ -45,12 +47,13 @@ function App() {
   const [isPushLoading, setIsPushLoading] = useState(false);
   const [notifications, setNotifications] = useState<ExtendedNotification[]>([]);
   const [topics, setTopics] = useState<Topic[]>([]);
+  const [teams, setTeams] = useState<Team[]>([]);
   const [toasts, setToasts] = useState<ExtendedNotification[]>([]);
   const [authLoading, setAuthLoading] = useState(true);
   const [sites, setSites] = useState<MonitoredSite[]>([]);
   const [loadingSites, setLoadingSites] = useState(true);
   const [sitesError, setSitesError] = useState<string | null>(null);
-
+  const [profile, setProfile] = useState<any | null>(null);
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -568,6 +571,7 @@ function App() {
           setNotifications([]);
           setTopics([]);
           setToasts([]);
+          setProfile(null);
           setIsPushEnabled(false);
           setIsPushLoading(false);
           
@@ -850,6 +854,21 @@ function App() {
       try {
         console.log('📊 Fetching initial data for user:', session.user.id);
         
+        // 👇 ADD THIS BLOCK TO FETCH THE PROFILE
+        const { data: profileData, error: profileError } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', session.user.id)
+          .single();
+
+        if (profileError) {
+          console.error('Error fetching user profile:', profileError);
+          throw profileError;
+        } else if (mounted) {
+          setProfile(profileData);
+          console.log('✅ User profile fetched:', profileData);
+        }
+        // END OF BLOCK TO ADD
         // Fetch notifications
         const { data: notificationsData, error: notificationsError } = await supabase
           .from('notifications')
@@ -930,7 +949,18 @@ function App() {
           console.log('✅ Topics fetched:', mergedTopics.length, 'subscriptions:', subscribedTopicIds.size);
           setTopics(mergedTopics);
         }
-        
+        // Fetch teams
+        const { data: teamsData, error: teamsError } = await supabase
+        .from('teams')
+        .select('*');
+
+        if (teamsError) {
+        console.error('❌ Error fetching teams:', teamsError);
+        // You might want to throw the error or handle it appropriately
+        } else if (teamsData && mounted) {
+        console.log('✅ Teams fetched:', teamsData.length);
+        setTeams(teamsData);
+        }
         dataFetched.current = true;
         console.log('✅ Initial data fetch completed successfully');
 
@@ -1264,9 +1294,10 @@ function App() {
     }
   }, [session]);
 
-  const handleAddTopic = useCallback(async (name: string, description: string) => {
+  // Replace the existing handleAddTopic function with this one
+  const handleAddTopic = useCallback(async (name: string, description: string, team_id: string | null) => {
     try {
-      const { error } = await supabase.from('topics').insert([{ name, description }]);
+      const { error } = await supabase.from('topics').insert([{ name, description, team_id }]);
       if (error) {
         console.error("Error adding topic:", error);
         alert(`Failed to add topic: ${error.message}`);
@@ -1278,6 +1309,7 @@ function App() {
       alert('Failed to add topic. Please try again.');
     }
   }, []);
+
   
   const handleToggleSubscription = useCallback(async (topic: Topic) => {
     if (!session) return;
@@ -1359,7 +1391,37 @@ function App() {
       alert('Failed to delete topic. Please try again.');
     }
   }, [session]);
-
+  const handleUpdateTopicTeam = useCallback(async (topicId: string, teamId: string | null) => {
+    try {
+      const { error } = await supabase
+        .from('topics')
+        .update({ team_id: teamId })
+        .eq('id', topicId);
+  
+      if (error) {
+        console.error('Error updating topic team:', error);
+        alert(`Failed to update topic team: ${error.message}`);
+      } else {
+        console.log(`✅ Topic ${topicId} assigned to team ${teamId}`);
+        // Refresh topics to reflect the change
+        const { data, error: refreshError } = await supabase.from('topics').select('*').order('name');
+        if (refreshError) {
+          console.error('Error refetching topics:', refreshError);
+        } else {
+          const subscribedTopicIds = new Set(topics.filter(t => t.subscribed).map(t => t.id));
+          const mergedTopics = data.map(topic => ({
+            ...topic,
+            subscribed: subscribedTopicIds.has(topic.id),
+          }));
+          setTopics(mergedTopics);
+        }
+      }
+    } catch (error) {
+      console.error('Error updating topic team:', error);
+      alert('Failed to update topic team. Please try again.');
+    }
+  }, [topics]);
+  
   const handleClearLogs = useCallback(async () => {
     if (!session) return;
     try {
@@ -1428,6 +1490,7 @@ function App() {
               setIsSidebarOpen={setIsSidebarOpen}
               onSendTestAlert={sendTestAlert}
               topics={topics}
+              profile={profile}
             />
             <div className="flex-1 flex flex-col w-full">
               <Routes>
@@ -1503,6 +1566,20 @@ function App() {
                     onNavigate={handleNavigate}
                   />
                 }/>
+                <Route path="/user-management" element={
+                  <UserManagementPage
+                    onLogout={handleLogout}
+                    isSidebarOpen={isSidebarOpen}
+                    setIsSidebarOpen={setIsSidebarOpen}
+                    notifications={notifications}
+                    openSettings={() => setIsSettingsOpen(true)}
+                    systemStatus={systemStatus}
+                    session={session}
+                    onNavigate={handleNavigate}
+                    topics={topics}
+                    onUpdateTopicTeam={handleUpdateTopicTeam}
+                  />
+                }/>
                 <Route path="/calendar" element={ 
                   <CalendarPage 
                     onLogout={handleLogout} 
@@ -1542,26 +1619,33 @@ function App() {
                     onAddTopic={handleAddTopic}
                     onToggleSubscription={handleToggleSubscription}
                     onDeleteTopic={handleDeleteTopic}
+                    teams={teams}
                   />
                 }/>
                 <Route path="*" element={
-                  <DashboardPage
-                    onLogout={handleLogout}
-                    onNavigate={handleNavigate}
-                    isSidebarOpen={isSidebarOpen}
-                    setIsSidebarOpen={setIsSidebarOpen}
-                    notifications={notifications}
-                    openSettings={() => setIsSettingsOpen(true)}
-                    systemStatus={systemStatus}
-                    session={session}
-                    topics={topics}
-                    onUpdateNotification={updateNotification}
-                    onAddComment={addComment}
-                    sites={sites}
-                    loadingSites={loadingSites}
-                    sitesError={sitesError}
-                    onClearLogs={handleClearLogs}
-                  />
+                  (session && profile) ? ( // 👈 ADD THIS CHECK
+                    <DashboardPage
+                      onLogout={handleLogout}
+                      onNavigate={handleNavigate}
+                      isSidebarOpen={isSidebarOpen}
+                      setIsSidebarOpen={setIsSidebarOpen}
+                      notifications={notifications}
+                      openSettings={() => setIsSettingsOpen(true)}
+                      systemStatus={systemStatus}
+                      session={session}
+                      topics={topics}
+                      onUpdateNotification={updateNotification}
+                      onAddComment={addComment}
+                      sites={sites}
+                      loadingSites={loadingSites}
+                      sitesError={sitesError}
+                      onClearLogs={handleClearLogs}
+                    />
+                  ) : ( // 👈 ADD THIS BLOCK
+                    <div className="flex-1 flex items-center justify-center">
+                      <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+                    </div>
+                  )
                 }/>
               </Routes>
             </div>

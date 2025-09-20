@@ -1,25 +1,30 @@
 import React, { useState } from 'react';
-import { Topic, Session } from '../../types';
+import { Topic, Session, Database } from '../../types';
 import { Icon } from '../ui/Icon';
+
+type Team = Database['public']['Tables']['teams']['Row'];
 
 interface TopicManagerProps {
     topics: Topic[];
+    teams: Team[];
     session: Session | null;
-    onAddTopic: (name: string, description: string) => Promise<void>;
+    onAddTopic: (name: string, description: string, teamId: string | null) => Promise<void>;
     onToggleSubscription: (topic: Topic) => Promise<void>;
     onDeleteTopic: (topic: Topic) => Promise<void>;
 }
 
-export const TopicManager: React.FC<TopicManagerProps> = ({ topics, session, onAddTopic, onToggleSubscription, onDeleteTopic }) => {
+export const TopicManager: React.FC<TopicManagerProps> = ({ topics, teams, session, onAddTopic, onToggleSubscription, onDeleteTopic }) => {
     const [isAdding, setIsAdding] = useState(false);
     const [newTopicName, setNewTopicName] = useState('');
     const [newTopicDesc, setNewTopicDesc] = useState('');
+    const [selectedTeam, setSelectedTeam] = useState<string | null>(null);
 
     const handleAddTopic = async () => {
         if (newTopicName.trim()) {
-            await onAddTopic(newTopicName, newTopicDesc);
+            await onAddTopic(newTopicName, newTopicDesc, selectedTeam);
             setNewTopicName('');
             setNewTopicDesc('');
+            setSelectedTeam(null);
             setIsAdding(false);
         }
     };
@@ -28,10 +33,11 @@ export const TopicManager: React.FC<TopicManagerProps> = ({ topics, session, onA
         setIsAdding(false);
         setNewTopicName('');
         setNewTopicDesc('');
+        setSelectedTeam(null);
     }
 
     const handleDeleteConfirmation = (topic: Topic) => {
-        if (window.confirm(`Are you sure you want to delete the topic "${topic.name}"?`)) {
+        if (window.confirm(`Are you sure you want to delete the topic \"${topic.name}\"?`)) {
             onDeleteTopic(topic);
         }
     };
@@ -69,6 +75,16 @@ export const TopicManager: React.FC<TopicManagerProps> = ({ topics, session, onA
                         rows={3}
                         className="w-full px-4 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition resize-none"
                     />
+                    <select
+                        value={selectedTeam || ''}
+                        onChange={e => setSelectedTeam(e.target.value || null)}
+                        className="w-full px-4 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition"
+                    >
+                        <option value="">Assign to a team (optional)</option>
+                        {teams.map(team => (
+                            <option key={team.id} value={team.id}>{team.name}</option>
+                        ))}
+                    </select>
                      <div className="flex gap-3 justify-end pt-2">
                         <button onClick={handleCancel} className="px-4 py-2 rounded-md bg-gray-200 dark:bg-gray-600 text-gray-800 dark:text-white text-sm font-semibold hover:bg-gray-300 dark:hover:bg-gray-500 transition">
                             Cancel
