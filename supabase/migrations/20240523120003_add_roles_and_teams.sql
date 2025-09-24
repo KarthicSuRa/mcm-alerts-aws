@@ -1,6 +1,6 @@
--- Corrected Combined Migration: Add Roles, Teams, and Full Permissions (v2)
--- This single script creates the schema and applies all RLS policies.
--- FIX: Corrected a syntax error in the topic_subscriptions policy.
+-- Corrected Combined Migration: Add Roles, Teams, and Full Permissions (v4)
+-- This script creates the schema and applies all RLS policies.
+-- FIX: Rewrites RLS policies on `profiles` and `team_members` to prevent infinite recursion.
 
 BEGIN;
 
@@ -44,7 +44,7 @@ CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER AS $$
 BEGIN
   INSERT INTO public.profiles (id, email, full_name)
-  VALUES (new.id, new.email, new.raw_user_meta_data->>'full_name');
+  VALUES (new.id, new.email, new.raw_user_meta_data->>'''full_name''');
   RETURN new;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
@@ -56,7 +56,7 @@ CREATE TRIGGER on_auth_user_created
 
 -- 5. BACK-FILL EXISTING USERS
 INSERT INTO public.profiles (id, email, full_name)
-SELECT id, email, raw_user_meta_data->>'full_name' FROM auth.users
+SELECT id, email, raw_user_meta_data->>'''full_name''' FROM auth.users
 ON CONFLICT (id) DO NOTHING;
 
 UPDATE public.profiles
@@ -83,53 +83,75 @@ RETURNS BOOLEAN AS $$
 BEGIN RETURN EXISTS (SELECT 1 FROM public.team_members WHERE team_id = p_team_id AND user_id = auth.uid() AND team_role = 'admin'); END;
 $$ LANGUAGE plpgsql SECURITY INVOKER;
 
--- 2. DROP OLD PERMISSIVE POLICIES
-DROP POLICY IF EXISTS "Allow unrestricted access to topics" ON public.topics;
-DROP POLICY IF EXISTS "Allow unrestricted access to notifications" ON public.notifications;
-DROP POLICY IF EXISTS "Allow unrestricted access to user_notification_preferences" ON public.user_notification_preferences;
-DROP POLICY IF EXISTS "Allow unrestricted access to topic_subscriptions" ON public.topic_subscriptions;
-DROP POLICY IF EXISTS "Allow unrestricted access to comments" ON public.comments;
-DROP POLICY IF EXISTS "Allow unrestricted access to onesignal_players" ON public.onesignal_players;
-DROP POLICY IF EXISTS "Allow unrestricted access to push_subscriptions" ON public.push_subscriptions;
-DROP POLICY IF EXISTS "Allow unrestricted access to subscriptions" ON public.subscriptions;
-DROP POLICY IF EXISTS "public read monitored_sites" ON public.monitored_sites;
-DROP POLICY IF EXISTS "auth full access monitored_sites" ON public.monitored_sites;
-DROP POLICY IF EXISTS "public read ping_logs" ON public.ping_logs;
-DROP POLICY IF EXISTS "auth full access ping_logs" ON public.ping_logs;
+-- 2. DROP OLD POLICIES
+-- Drop policies in reverse order of dependency to be safe
+DROP POLICY IF EXISTS "Manage own preferences and subscriptions" ON public.user_notification_preferences;
+DROP POLICY IF EXISTS "Manage own OneSignal players" ON public.onesignal_players;
+DROP POLICY IF EXISTS "Manage own push subscriptions" ON public.push_subscriptions;
+DROP POLICY IF EXISTS "Read monitored sites" ON public.monitored_sites;
+DROP POLICY IF EXISTS "Super Admins can manage monitored sites" ON public.monitored_sites;
+DROP POLICY IF EXISTS "Super admins can delete ping logs" ON public.ping_logs;
+DROP POLICY IF EXISTS "Users can read ping logs" ON public.ping_logs;
+DROP POLICY IF EXISTS "Users can create ping logs" ON public.ping_logs;
+DROP POLICY IF EXISTS "View comments on viewable notifications" ON public.comments;
+DROP POLICY IF EXISTS "Manage own comments" ON public.comments;
+DROP POLICY IF EXISTS "Admins can moderate comments in their team" ON public.comments;
+DROP POLICY IF EXISTS "Super admin full access to comments" ON public.comments;
+DROP POLICY IF EXISTS "View notifications for team topics or public topics" ON public.notifications;
+DROP POLICY IF EXISTS "Manage notifications for admin teams" ON public.notifications;
+DROP POLICY IF EXISTS "Super admin full access to notifications" ON public.notifications;
+DROP POLICY IF EXISTS "View own subscriptions" ON public.topic_subscriptions;
+DROP POLICY IF EXISTS "Allow subscription INSERT for team members or public topics" ON public.topic_subscriptions;
+DROP POLICY IF EXISTS "Allow subscription DELETE for self" ON public.topic_subscriptions;
+DROP POLICY IF EXISTS "Super admin full access to topic subscriptions" ON public.topic_subscriptions;
+DROP POLICY IF EXISTS "Team admins can view team subscriptions" ON public.topic_subscriptions;
+DROP POLICY IF EXISTS "View topics for own teams or if no team assigned" ON public.topics;
+DROP POLICY IF EXISTS "Manage topics for own admin teams" ON public.topics;
+DROP POLICY IF EXISTS "Super admin full access to topics" ON public.topics;
+DROP POLICY IF EXISTS "Users can view team memberships" ON public.team_members;
+DROP POLICY IF EXISTS "Team admins can manage their members" ON public.team_members;
+DROP POLICY IF EXISTS "Super admins can manage all team members" ON public.team_members;
+DROP POLICY IF EXISTS "Super admins can manage all teams" ON public.teams;
+DROP POLICY IF EXISTS "Team admins can update their team" ON public.teams;
+DROP POLICY IF EXISTS "Authenticated users can view all teams" ON public.teams;
+DROP POLICY IF EXISTS "Users can view all profiles" ON public.profiles;
+DROP POLICY IF EXISTS "Users can update their own profile" ON public.profiles;
+DROP POLICY IF EXISTS "Super admins can update any profile" ON public.profiles;
+DROP POLICY IF EXISTS "Super admins can delete any profile" ON public.profiles;
 
--- 3. IMPLEMENT NEW RLS POLICIES
 
--- Profiles
-CREATE POLICY "Super admins can manage all profiles" ON public.profiles FOR ALL USING (get_my_app_role() = 'super_admin') WITH CHECK (get_my_app_role() = 'super_admin');
+-- 3. IMPLEMENT NEW, CORRECTED RLS POLICIES
+
+-- Profiles (FIXED to prevent recursion)
 CREATE POLICY "Users can view all profiles" ON public.profiles FOR SELECT USING (true);
-CREATE POLICY "Users can update own profile" ON public.profiles FOR UPDATE USING (id = auth.uid()) WITH CHECK (id = auth.uid());
+CREATE POLICY "Users can update their own profile" ON public.profiles FOR UPDATE USING (id = auth.uid()) WITH CHECK (id = auth.uid());
+CREATE POLICY "Super admins can update any profile" ON public.profiles FOR UPDATE USING (get_my_app_role() = 'super_admin');
+CREATE POLICY "Super admins can delete any profile" ON public.profiles FOR DELETE USING (get_my_app_role() = 'super_admin');
 
 -- Teams
 CREATE POLICY "Super admins can manage all teams" ON public.teams FOR ALL USING (get_my_app_role() = 'super_admin') WITH CHECK (get_my_app_role() = 'super_admin');
 CREATE POLICY "Team admins can update their team" ON public.teams FOR UPDATE USING (is_team_admin(id)) WITH CHECK (is_team_admin(id));
-CREATE POLICY "Users can view all teams" ON public.teams FOR SELECT USING (true);
+CREATE POLICY "Authenticated users can view all teams" ON public.teams FOR SELECT USING (auth.role() = 'authenticated');
 
--- Team Members
-CREATE POLICY "Super admins can manage all team members" ON public.team_members FOR ALL USING (get_my_app_role() = 'super_admin') WITH CHECK (get_my_app_role() = 'super_admin');
+-- Team Members (FIXED to prevent recursion)
+CREATE POLICY "Users can view team memberships" ON public.team_members FOR SELECT USING (auth.role() = 'authenticated');
 CREATE POLICY "Team admins can manage their members" ON public.team_members FOR ALL USING (is_team_admin(team_id)) WITH CHECK (is_team_admin(team_id));
-CREATE POLICY "Users can view their own team memberships" ON public.team_members FOR SELECT USING (is_team_member(team_id));
+CREATE POLICY "Super admins can manage all team members" ON public.team_members FOR ALL USING (get_my_app_role() = 'super_admin') WITH CHECK (get_my_app_role() = 'super_admin');
 
 -- Topics
-CREATE POLICY "View topics for own teams" ON public.topics FOR SELECT USING (is_team_member(team_id) OR get_my_app_role() = 'super_admin');
-CREATE POLICY "Manage topics for own teams" ON public.topics FOR ALL USING (is_team_admin(team_id)) WITH CHECK (is_team_admin(team_id));
+CREATE POLICY "View topics for own teams or if no team assigned" ON public.topics FOR SELECT USING (team_id IS NULL OR is_team_member(team_id) OR get_my_app_role() = 'super_admin');
+CREATE POLICY "Manage topics for own admin teams" ON public.topics FOR ALL USING (is_team_admin(team_id)) WITH CHECK (is_team_admin(team_id));
 CREATE POLICY "Super admin full access to topics" ON public.topics FOR ALL USING (get_my_app_role() = 'super_admin') WITH CHECK (get_my_app_role() = 'super_admin');
 
 -- Topic Subscriptions
 CREATE POLICY "View own subscriptions" ON public.topic_subscriptions FOR SELECT USING (user_id = auth.uid());
--- CORRECTED POLICY: Split into two for INSERT and DELETE
-CREATE POLICY "Allow subscription INSERT for team members" ON public.topic_subscriptions FOR INSERT WITH CHECK (user_id = auth.uid() AND (EXISTS (SELECT 1 FROM public.topics t WHERE t.id = topic_id AND is_team_member(t.team_id))));
+CREATE POLICY "Allow subscription INSERT for team members or public topics" ON public.topic_subscriptions FOR INSERT WITH CHECK (user_id = auth.uid() AND (EXISTS (SELECT 1 FROM public.topics t WHERE t.id = topic_id AND (t.team_id IS NULL OR is_team_member(t.team_id)))));
 CREATE POLICY "Allow subscription DELETE for self" ON public.topic_subscriptions FOR DELETE USING (user_id = auth.uid());
--- END CORRECTION
 CREATE POLICY "Super admin full access to topic subscriptions" ON public.topic_subscriptions FOR ALL USING (get_my_app_role() = 'super_admin') WITH CHECK (get_my_app_role() = 'super_admin');
 CREATE POLICY "Team admins can view team subscriptions" ON public.topic_subscriptions FOR SELECT USING (is_team_admin((SELECT team_id FROM topics WHERE id = topic_id)));
 
 -- Notifications
-CREATE POLICY "View notifications for team topics" ON public.notifications FOR SELECT USING (is_team_member((SELECT team_id FROM public.topics WHERE id = topic_id)) OR get_my_app_role() = 'super_admin');
+CREATE POLICY "View notifications for team topics or public topics" ON public.notifications FOR SELECT USING (is_team_member((SELECT team_id FROM public.topics WHERE id = topic_id)) OR (SELECT team_id FROM public.topics WHERE id = topic_id) IS NULL OR get_my_app_role() = 'super_admin');
 CREATE POLICY "Manage notifications for admin teams" ON public.notifications FOR ALL USING (is_team_admin((SELECT team_id FROM public.topics WHERE id = topic_id))) WITH CHECK (is_team_admin((SELECT team_id FROM public.topics WHERE id = topic_id)));
 CREATE POLICY "Super admin full access to notifications" ON public.notifications FOR ALL USING (get_my_app_role() = 'super_admin') WITH CHECK (get_my_app_role() = 'super_admin');
 
@@ -139,7 +161,7 @@ CREATE POLICY "Manage own comments" ON public.comments FOR ALL USING (user_id = 
 CREATE POLICY "Admins can moderate comments in their team" ON public.comments FOR ALL USING (is_team_admin((SELECT t.team_id FROM public.topics t JOIN public.notifications n ON t.id = n.topic_id WHERE n.id = notification_id)));
 CREATE POLICY "Super admin full access to comments" ON public.comments FOR ALL USING (get_my_app_role() = 'super_admin') WITH CHECK (get_my_app_role() = 'super_admin');
 
--- Ping Logs (Clear Logs)
+-- Ping Logs
 CREATE POLICY "Super admins can delete ping logs" ON public.ping_logs FOR DELETE USING (get_my_app_role() = 'super_admin');
 CREATE POLICY "Users can read ping logs" ON public.ping_logs FOR SELECT USING (true);
 CREATE POLICY "Users can create ping logs" ON public.ping_logs FOR INSERT WITH CHECK (true);
