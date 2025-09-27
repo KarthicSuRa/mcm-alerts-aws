@@ -1,8 +1,53 @@
 import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { createClient, SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
-// Standard browser User-Agent to avoid 403 Forbidden errors from WAFs
-const FAKE_USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36';
+const FAKE_USER_AGENT = 'MCM Monitor Alerts';
+
+async function triggerNotifications(supabase: SupabaseClient, results: any[], sites: any[]) {
+  const downSiteResults = results.filter(result => !result.is_up);
+
+  if (downSiteResults.length === 0) {
+    return;
+  }
+
+  console.log(`Found ${downSiteResults.length} down sites. Triggering notifications...`);
+
+  const notificationPromises = downSiteResults.map(result => {
+    const site = sites.find(s => s.id === result.site_id);
+    if (!site) {
+      console.error(`Could not find site with ID ${result.site_id} for notification.`);
+      return Promise.resolve(); // Continue with other notifications
+    }
+
+    const payload = {
+      title: `Site Down Alert: ${site.name}`,
+      message: `The monitored site "${site.name}" was detected as down. Error: ${result.error_message || 'No details available.'}`,
+      severity: 'high',
+      type: 'site_alert',
+      site: site.name,
+      topic_name: 'Site Monitoring' // Ensure this topic exists
+    };
+
+    console.log(`Invoking 'create-notification' for site: ${site.name}`);
+    return supabase.functions.invoke('create-notification', {
+      body: payload
+    });
+  });
+
+  const notificationResults = await Promise.all(notificationPromises);
+
+  notificationResults.forEach((res, index) => {
+    // Check if the promise was resolved without an actual API call (e.g., site not found)
+    if (!res) return;
+
+    const site = sites.find(s => s.id === downSiteResults[index].site_id);
+    if (res.error) {
+      console.error(`Error invoking notification for ${site?.name}:`, res.error);
+    } else {
+      console.log(`Successfully invoked notification for ${site?.name}.`);
+    }
+  });
+}
 
 serve(async (req) => {
   try {
@@ -15,14 +60,14 @@ serve(async (req) => {
     const { data: sites, error: sitesError } = await supabase
       .from('monitored_sites')
       .select('id, url, name')
-      .eq('is_paused', false);
+      .eq('status', 'active');
 
     if (sitesError) {
       console.error('Error fetching sites:', sitesError);
       throw sitesError;
     }
 
-    console.log(`Found ${sites.length} sites to monitor.`);
+    console.log(`Found ${sites.length} active sites to monitor.`);
 
     const checkPromises = sites.map(async (site) => {
       const start = Date.now();
@@ -35,16 +80,14 @@ serve(async (req) => {
       try {
         console.log(`Checking "${site.name}"...`);
         const response = await fetch(site.url, {
-          method: 'GET', // Use GET instead of HEAD to better mimic a real user
+          method: 'GET',
           headers: { 'User-Agent': FAKE_USER_AGENT },
-          redirect: 'follow' // Follow redirects to get the final status
+          redirect: 'follow'
         });
 
         response_time_ms = Date.now() - start;
         status_code = response.status;
         status_text = response.statusText;
-        
-        // Consider any 2xx or 3xx status as "up", as redirects are a valid sign of a working site.
         is_up = response.status >= 200 && response.status < 400;
 
         if (!is_up) {
@@ -53,12 +96,11 @@ serve(async (req) => {
         } else {
             console.log(`✓ Result for "${site.name}": Status ${status_code} (${response_time_ms}ms)`);
         }
-        
+
       } catch (e) {
         response_time_ms = Date.now() - start;
-        // This catches network errors like DNS failures or connection refused.
         error_message = e.message;
-        is_up = false; // Ensure is_up is marked as false
+        is_up = false;
         console.error(`✗ Failure for "${site.name}": ${e.message} (${response_time_ms}ms)`);
       }
 
@@ -74,15 +116,21 @@ serve(async (req) => {
 
     const results = await Promise.all(checkPromises);
 
-    console.log(`Attempting to bulk insert ${results.length} logs...`);
-    const { error: insertError } = await supabase.from('ping_logs').insert(results);
-
-    if (insertError) {
-      console.error('Error bulk inserting logs:', insertError);
-      throw insertError;
-    }
-    
-    console.log('✅ Successfully inserted all logs into the database.');
+    // Fork off notifications and log insertion to run in parallel
+    await Promise.all([
+      triggerNotifications(supabase, results, sites),
+      (async () => {
+        if (results.length > 0) {
+          const { error: insertError } = await supabase.from('ping_logs').insert(results);
+          if (insertError) {
+            console.error('Error bulk inserting logs:', insertError);
+            // Non-fatal, don't throw, just log it. The main function can still succeed.
+          } else {
+            console.log(`✅ Successfully inserted ${results.length} logs into the database.`);
+          }
+        }
+      })()
+    ]);
 
     return new Response(
       JSON.stringify({ message: `Successfully checked ${sites.length} sites.` }),

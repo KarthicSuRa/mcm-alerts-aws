@@ -1,8 +1,9 @@
-import React, { useState, useMemo } from 'react';
-import { Notification, Severity, Topic, NotificationStatus, Session, NotificationUpdatePayload } from '../../types';
+import React, { useState, useMemo, useEffect } from 'react';
+import { Notification, Severity, Topic, NotificationStatus, Session, NotificationUpdatePayload, User } from '../../types';
 import { SEVERITY_INFO, STATUS_INFO } from '../../constants';
 import { Icon } from '../ui/Icon';
 import { NotificationDetail } from './NotificationDetail';
+import { supabase } from '../../lib/supabaseClient';
 
 interface RecentNotificationsProps {
     notifications: Notification[];
@@ -24,7 +25,36 @@ export const RecentNotifications: React.FC<RecentNotificationsProps> = ({
     const [searchTerm, setSearchTerm] = useState('');
     const [expandedId, setExpandedId] = useState<string | null>(null);
     const [processingIds, setProcessingIds] = useState<Set<string>>(new Set());
+    const [infoModalNotification, setInfoModalNotification] = useState<Notification | null>(null);
+    const [subscribers, setSubscribers] = useState<User[]>([]);
+    const [loadingSubscribers, setLoadingSubscribers] = useState(false);
     
+    useEffect(() => {
+        const fetchSubscribers = async () => {
+            if (!infoModalNotification || !infoModalNotification.topic_id) {
+                setSubscribers([]);
+                return;
+            }
+
+            setLoadingSubscribers(true);
+            try {
+                const { data, error } = await supabase.functions.invoke('get-topic-subscribers-info', {
+                    body: { topic_id: infoModalNotification.topic_id },
+                });
+
+                if (error) throw error;
+                setSubscribers(data || []);
+            } catch (error) {
+                console.error('Error fetching subscribers:', error);
+                setSubscribers([]);
+            } finally {
+                setLoadingSubscribers(false);
+            }
+        };
+
+        fetchSubscribers();
+    }, [infoModalNotification]);
+
     const filteredNotifications = useMemo(() => {
         const subscribedTopicIds = new Set(topics.filter(t => t.subscribed).map(t => t.id));
         
@@ -64,7 +94,6 @@ export const RecentNotifications: React.FC<RecentNotificationsProps> = ({
         return notifs.sort((a,b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
     }, [notifications, severityFilter, timeFilter, searchTerm, topics]);
 
-    // Enhanced quick action handlers with better state management and error handling
     const handleQuickAcknowledge = async (e: React.MouseEvent, notification: Notification) => {
         e.stopPropagation();
         
@@ -181,6 +210,16 @@ export const RecentNotifications: React.FC<RecentNotificationsProps> = ({
                                                     <Icon name={STATUS_INFO[n.status].icon} className="w-3.5 h-3.5" />
                                                     {isProcessing ? 'Processing...' : n.status}
                                                 </span>
+                                                <button 
+                                                    className="ml-2 p-1 text-gray-400 hover:text-gray-600" 
+                                                    onClick={(e) => { 
+                                                        e.stopPropagation(); 
+                                                        setInfoModalNotification(n); 
+                                                    }}
+                                                    title="Show delivery info"
+                                                >
+                                                    <Icon name="info-circle" className="h-5 w-5" />
+                                                </button>
                                                 {n.comments && n.comments.length > 0 && (
                                                     <span className="inline-flex items-center gap-1 px-2 py-1 text-xs text-muted-foreground bg-muted rounded-full">
                                                         <Icon name="message-circle" className="w-3 h-3" />
@@ -229,6 +268,7 @@ export const RecentNotifications: React.FC<RecentNotificationsProps> = ({
                                                     </div>
                                                 )}
                                             </div>
+                                            <Icon name={expandedId === n.id ? 'chevron-up' : 'chevron-down'} className="ml-4" />
                                         </div>
                                     </div>
                                 </div>
@@ -245,6 +285,81 @@ export const RecentNotifications: React.FC<RecentNotificationsProps> = ({
                     })}
                 </div>
             </div>
+            {infoModalNotification && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onClick={() => setInfoModalNotification(null)}>
+                    <div className="bg-card text-card-foreground p-6 rounded-lg shadow-xl max-w-md w-full" onClick={e => e.stopPropagation()}>
+                        <div className="flex justify-between items-center mb-4">
+                            <h3 className="text-xl font-semibold flex items-center">
+                                <Icon name="share-alt" className="mr-2" />
+                                Delivery Information
+                            </h3>
+                            <button onClick={() => setInfoModalNotification(null)} className="p-1 rounded-full hover:bg-accent">
+                                <Icon name="close" className="h-6 w-6 text-muted-foreground" />
+                            </button>
+                        </div>
+                        {(() => {
+                            const topic = topics.find(t => t.id === infoModalNotification.topic_id);
+                            return (
+                                <div>
+                                    <p className="text-muted-foreground mb-2">
+                                        This notification was sent to all subscribers of the topic:
+                                    </p>
+                                    <div className="bg-accent p-3 rounded-md">
+                                        <p className="font-semibold text-lg">
+                                            {topic ? topic.name : 'Unknown Topic'}
+                                        </p>
+                                        {topic && <p className="text-sm text-muted-foreground">{topic.description}</p>}
+                                    </div>
+                                    
+                                    <div className="mt-4">
+                                        <h4 className="font-semibold mb-2">Recipients ({subscribers.length})</h4>
+                                        {loadingSubscribers ? (
+                                             <div className="space-y-2">
+                                                {[...Array(3)].map((_, i) => (
+                                                    <div key={i} className="flex items-center gap-3 bg-secondary/50 p-2 rounded-md animate-pulse">
+                                                        <div className="w-8 h-8 rounded-full bg-muted"></div>
+                                                        <div className="flex-1">
+                                                            <div className="h-4 bg-muted rounded w-3/4"></div>
+                                                            <div className="h-3 bg-muted rounded w-1/2 mt-1"></div>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        ) : subscribers.length > 0 ? (
+                                            <div className="space-y-2 max-h-48 overflow-y-auto pr-2 -mr-2">
+                                                {subscribers.map(user => {
+                                                    const userInitial = (user.full_name || user.email || 'A')[0].toUpperCase();
+                                                    return (
+                                                        <div key={user.id} className="flex items-center gap-3 bg-secondary/50 p-2 rounded-md">
+                                                           <div className="w-8 h-8 rounded-full bg-muted text-muted-foreground flex items-center justify-center font-bold text-sm flex-shrink-0">
+                                                                {userInitial}
+                                                            </div>
+                                                            <div>
+                                                                <p className="font-medium text-sm text-foreground">{user.full_name || 'Unknown User'}</p>
+                                                                <p className="text-xs text-muted-foreground">{user.email}</p>
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        ) : (
+                                            <p className="text-sm text-muted-foreground text-center py-4">No subscribers for this topic.</p>
+                                        )}
+                                    </div>
+                                </div>
+                            );
+                        })()}
+                        <div className="mt-6 flex justify-end">
+                            <button 
+                                className="px-4 py-2 bg-secondary text-secondary-foreground rounded-md hover:bg-secondary/80 focus:outline-none focus:ring-2 focus:ring-ring"
+                                onClick={() => setInfoModalNotification(null)}
+                            >
+                                Close
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

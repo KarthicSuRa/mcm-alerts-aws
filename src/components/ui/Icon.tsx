@@ -22,6 +22,7 @@ const icons: { [key: string]: React.ReactNode } = {
   search: <><circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" /></>,
   copy: <><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" /><rect width="8" height="4" x="8" y="2" rx="1" ry="1" fill="currentColor" /></>,
   check: <path d="M20 6 9 17l-5-5" />,
+  'check-check': <path d="M20 6 9 17l-5-5m12-3-5 5" />,
   plus: <path d="M12 5v14M5 12h14" />,
   close: <path d="M18 6 6 18M6 6l12 12" />,
   monitor: <><rect width="20" height="14" x="2" y="3" rx="2" /><line x1="8" x2="16" y1="21" y2="21" /><line x1="12" x2="12" y1="17" y2="21" /></>,
@@ -37,6 +38,7 @@ const icons: { [key: string]: React.ReactNode } = {
   comment: <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" fill="currentColor" strokeWidth="0" />,
   barChart: <><path d="M12 20V10" /><path d="M18 20V4" /><path d="M6 20V16" /></>,
   info: <><circle cx="12" cy="12" r="10" /><path d="M12 16v-4" /><path d="M12 8h.01"/></>,
+  'info-circle': <><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></>,
   'alert-circle': <><circle cx="12" cy="12" r="10" fill="currentColor" strokeWidth="0"/><line x1="12" x2="12" y1="8" y2="12" stroke="white" strokeWidth="2"/><line x1="12" x2="12.01" y1="16" y2="16" stroke="white" strokeWidth="2.5"/></>,
   'check-circle': <><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" fill="currentColor"/><path d="m9 17 2 2 4-4" stroke="white" fill="none"/></>,
   'shield-check': <><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" fill="currentColor" strokeWidth="0"/><path d="m9 12 2 2 4-4" stroke="white" fill="none"/></>,
@@ -45,9 +47,12 @@ const icons: { [key: string]: React.ReactNode } = {
   'trending-up': <><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"></polyline><polyline points="17 6 23 6 23 12"></polyline></>,
   'chevron-left': <path d="m15 18-6-6 6-6" />,
   'chevron-right': <path d="m9 18 6-6-6-6" />,
+  'chevron-up': <path d="m18 15-6-6-6 6" />,
+  'chevron-down': <path d="m6 9 6 6 6-6" />,
   grid: <path d="M3 3h7v7H3zm11 0h7v7h-7zM3 14h7v7H3zm11 0h7v7h-7z" />,
   'calendar-view': <path d="M8 2v4m8-4v4M3.5 10h17M18 4H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2z" />,
-  trash: <path d="M3 6h18m-2 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+  trash: <path d="M3 6h18m-2 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />,
+  'share-alt': <><circle cx="18" cy="5" r="3"></circle><circle cx="6" cy="12" r="3"></circle><circle cx="18" cy="19" r="3"></circle><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line></>
 };
 
 export const Icon: React.FC<IconProps> = ({ name, className = 'w-6 h-6' }) => {
