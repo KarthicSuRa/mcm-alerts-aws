@@ -2,7 +2,7 @@ import React from 'react';
 import { Icon } from '../components/ui/Icon';
 
 interface LandingPageProps {
-    onNavigate: (page: string) => void;
+    onNavigate: (page: 'login' | 'signup') => void;
 }
 
 const Feature: React.FC<{ icon: string; title: string; children: React.ReactNode }> = ({ icon, title, children }) => (
@@ -41,7 +41,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onNavigate }) => {
                                 <button onClick={() => onNavigate('login')} className="text-blue-600 hover:text-blue-700 transition-colors font-semibold px-5 py-2.5 rounded-lg text-sm border border-gray-300 hover:border-blue-600">
                                     Log In
                                 </button>
-                                <button onClick={() => onNavigate('login')} className="bg-blue-600 text-white font-bold px-5 py-2.5 rounded-lg text-sm hover:bg-blue-700 transition-colors">
+                                <button onClick={() => onNavigate('signup')} className="bg-blue-600 text-white font-bold px-5 py-2.5 rounded-lg text-sm hover:bg-blue-700 transition-colors">
                                     Get Started
                                 </button>
                             </div>
@@ -61,7 +61,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onNavigate }) => {
                             </p>
                             
                             <button 
-                                onClick={() => onNavigate('login')}
+                                onClick={() => onNavigate('signup')}
                                 className="bg-blue-600 text-white font-bold px-8 py-4 rounded-lg text-lg hover:bg-blue-700 transition-colors"
                             >
                                 Get Started

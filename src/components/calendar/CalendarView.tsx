@@ -3,7 +3,6 @@ import { CalendarFilterBar } from './CalendarFilterBar';
 import { CalendarGrid } from './CalendarGrid';
 import { EventModal } from './EventModal';
 import { CategoryManager } from './CategoryManager';
-import { sampleEvents, sampleCategories } from '../../data/calendar-data';
 import { CalendarEvent, Category } from '../../types';
 
 export interface CalendarViewHandle {
@@ -12,8 +11,8 @@ export interface CalendarViewHandle {
 
 export const CalendarView = forwardRef<CalendarViewHandle, {}>((props, ref) => {
   const [currentDate, setCurrentDate] = useState(new Date(2024, 11, 1)); // December 2024
-  const [events, setEvents] = useState<CalendarEvent[]>(sampleEvents);
-  const [categories, setCategories] = useState<Category[]>(sampleCategories);
+  const [events, setEvents] = useState<CalendarEvent[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isCategoryManagerOpen, setIsCategoryManagerOpen] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState<Partial<CalendarEvent> | null>(null);

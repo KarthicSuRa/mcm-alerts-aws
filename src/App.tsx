@@ -22,6 +22,7 @@ import { ThemeContext } from './contexts/ThemeContext';
 import { Routes, Route, useNavigate, useLocation } from 'react-router-dom';
 import { SiteDetailPage } from './pages/monitoring/SiteDetailPage';
 import UserManagementPage from './pages/UserManagementPage';
+import SyntheticTestRunner from './components/SyntheticTestRunner';
 import ErrorBoundary from './components/ui/ErrorBoundary';
 
 type NotificationFromDB = Database['public']['Tables']['notifications']['Row'];
@@ -33,6 +34,14 @@ type Team = Database['public']['Tables']['teams']['Row'];
 // Extended notification type to include OneSignal ID
 interface ExtendedNotification extends Notification {
   oneSignalId?: string;
+}
+
+// It's good practice to define the shape of your profile object
+interface Profile {
+  id: string;
+  username?: string;
+  avatar_url?: string;
+  // Add any other fields that are in your 'profiles' table
 }
 
 function App() {
@@ -53,7 +62,9 @@ function App() {
   const [sites, setSites] = useState<MonitoredSite[]>([]);
   const [loadingSites, setLoadingSites] = useState(true);
   const [sitesError, setSitesError] = useState<string | null>(null);
-  const [profile, setProfile] = useState<any | null>(null);
+  const [profile, setProfile] = useState<Profile | null>(null);
+  const [profileLoading, setProfileLoading] = useState(true);
+  const [profileError, setProfileError] = useState<string | null>(null);
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -565,6 +576,7 @@ function App() {
         
         if (!session) {
           // Reset all state when user logs out
+          setUnauthedPage('landing');
           dataFetched.current = false;
           oneSignalInitialized.current = false;
           initializationInProgress.current = false;
@@ -588,6 +600,9 @@ function App() {
             }
           });
           realtimeSubscriptions.current.clear();
+
+          // Navigate to landing page
+          navigate('/', { replace: true });
         }
       }
     });
@@ -854,21 +869,32 @@ function App() {
       try {
         console.log('📊 Fetching initial data for user:', session.user.id);
         
-        // 👇 ADD THIS BLOCK TO FETCH THE PROFILE
-        const { data: profileData, error: profileError } = await supabase
+        // Fetch profile
+        if (mounted) {
+          setProfileLoading(true);
+          setProfileError(null);
+        }
+
+        const { data: profileData, error: profileFetchError } = await supabase
           .from('profiles')
           .select('*')
           .eq('id', session.user.id)
           .single();
 
-        if (profileError) {
-          console.error('Error fetching user profile:', profileError);
-          throw profileError;
-        } else if (mounted) {
-          setProfile(profileData);
-          console.log('✅ User profile fetched:', profileData);
+        if (mounted) {
+          if (profileFetchError) {
+            console.error('❌ Error fetching profile:', profileFetchError);
+            setProfileError('Failed to load your profile. There might be a network issue.');
+            setProfile(null);
+          } else if (profileData) {
+            setProfile(profileData as Profile);
+          } else {
+            // This handles the case where the request succeeds but no profile is found
+            setProfileError('Your user profile could not be found.');
+            setProfile(null);
+          }
+          setProfileLoading(false);
         }
-        // END OF BLOCK TO ADD
         // Fetch notifications
         const { data: notificationsData, error: notificationsError } = await supabase
           .from('notifications')
@@ -1184,24 +1210,20 @@ function App() {
     console.log('➡️ Starting logout process...');
     
     try {
-      // --- FIX: Log user out of OneSignal ---
-      // This disassociates the user from the device, ensuring the next
-      // user to log in doesn't receive their push notifications.
       await oneSignalService.logout();
       console.log('🔔 Logged out from OneSignal');
     } catch (error) {
       console.error('❌ Error logging out from OneSignal (non-fatal):', error);
     }
     
-    // Sign out from Supabase
-    await supabase.auth.signOut();
-
-    // Reset all application state
-    setUnauthedPage('landing');
-    dataFetched.current = false;
-    oneSignalInitialized.current = false;
-
-  }, [oneSignalService]); // Dependencies are now cleaner
+    // This will trigger the onAuthStateChange listener below
+    const { error } = await supabase.auth.signOut();
+  
+    if (error) {
+      console.error('❌ Error signing out:', error);
+      alert('Failed to sign out. Please try again.');
+    }
+  }, [oneSignalService]);
 
 
   const handleNavigate = useCallback((page: string) => {
@@ -1592,6 +1614,9 @@ function App() {
                     session={session} 
                   /> 
                 } />
+                <Route path="/synthetic-monitoring" element={
+                  <SyntheticTestRunner />
+                } />
                 <Route path="/analytics" element={ 
                   <AnalyticsPage 
                     onLogout={handleLogout} 
@@ -1622,31 +1647,63 @@ function App() {
                     teams={teams}
                   />
                 }/>
-                <Route path="*" element={
-                  (session && profile) ? ( // 👈 ADD THIS CHECK
-                    <DashboardPage
-                      onLogout={handleLogout}
-                      onNavigate={handleNavigate}
-                      isSidebarOpen={isSidebarOpen}
-                      setIsSidebarOpen={setIsSidebarOpen}
-                      notifications={notifications}
-                      openSettings={() => setIsSettingsOpen(true)}
-                      systemStatus={systemStatus}
-                      session={session}
-                      topics={topics}
-                      onUpdateNotification={updateNotification}
-                      onAddComment={addComment}
-                      sites={sites}
-                      loadingSites={loadingSites}
-                      sitesError={sitesError}
-                      onClearLogs={handleClearLogs}
-                    />
-                  ) : ( // 👈 ADD THIS BLOCK
-                    <div className="flex-1 flex items-center justify-center">
-                      <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-                    </div>
-                  )
-                }/>
+                <Route path="*" element={(() => {
+                  if (profileLoading) {
+                    return (
+                      <div className="flex-1 flex items-center justify-center">
+                        <div className="text-center">
+                          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+                          <p>Loading Your Dashboard...</p>
+                        </div>
+                      </div>
+                    );
+                  }
+
+                  if (profileError) {
+                    return (
+                      <div className="flex-1 flex items-center justify-center p-4">
+                        <div className="text-center p-6 bg-red-50 dark:bg-red-900/20 border border-red-400 dark:border-red-700 rounded-lg max-w-md">
+                          <h3 className="text-lg font-semibold text-red-800 dark:text-red-200">Dashboard Unavailable</h3>
+                          <p className="text-red-600 dark:text-red-300 mt-2">
+                            There was an issue loading your dashboard.
+                          </p>
+                          <p className="text-sm text-gray-500 mt-2">{profileError}</p>
+                          <button
+                            onClick={() => window.location.reload()}
+                            className="mt-4 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                          >
+                            Try Again
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  }
+
+                  if (session && profile) {
+                    return (
+                      <DashboardPage
+                        onLogout={handleLogout}
+                        onNavigate={handleNavigate}
+                        isSidebarOpen={isSidebarOpen}
+                        setIsSidebarOpen={setIsSidebarOpen}
+                        notifications={notifications}
+                        openSettings={() => setIsSettingsOpen(true)}
+                        systemStatus={systemStatus}
+                        session={session}
+                        topics={topics}
+                        onUpdateNotification={updateNotification}
+                        onAddComment={addComment}
+                        sites={sites}
+                        loadingSites={loadingSites}
+                        sitesError={sitesError}
+                        onClearLogs={handleClearLogs}
+                      />
+                    );
+                  }
+
+                  // Fallback if session is lost
+                  return <SupabaseLoginPage />;
+                })()}/>
               </Routes>
             </div>
           </div>

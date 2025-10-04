@@ -59,10 +59,6 @@ export class OneSignalService {
     this.initPromise = this.doInitialize();
     return this.initPromise;
   }
-  // In src/lib/oneSignalService.ts
-
-  // Add this method inside the OneSignalService class
-    // In src/lib/oneSignalService.ts
 
   public async login(externalUserId: string): Promise<void> {
     if (!this.initialized) {
@@ -76,9 +72,19 @@ export class OneSignalService {
     
     try {
       console.log(`Setting OneSignal external user ID: ${externalUserId}`);
-      // CORRECT: Use window.OneSignal
-      await window.OneSignal.setExternalUserId(externalUserId);
-      console.log('✅ OneSignal external user ID set.');
+      // FIXED: Use Promise wrapper for callback-based API
+      await new Promise<void>((resolve, reject) => {
+        window.OneSignal.setExternalUserId(externalUserId, (result: any) => {
+          if (result && result.externalUserId === externalUserId) {
+            console.log('✅ OneSignal external user ID set.');
+            resolve();
+          } else {
+            const error = new Error('Failed to set external user ID');
+            console.error('❌ Failed to set OneSignal external user ID:', error);
+            reject(error);
+          }
+        });
+      });
     } catch (error) {
       console.error('❌ Failed to set OneSignal external user ID:', error);
       // We'll re-throw to let the caller know something went wrong.
@@ -94,15 +100,24 @@ export class OneSignalService {
 
     try {
       console.log('Removing OneSignal external user ID.');
-      // CORRECT: Use window.OneSignal
-      await window.OneSignal.removeExternalUserId();
-      console.log('✅ OneSignal external user ID removed.');
+      // FIXED: Use Promise wrapper for callback-based API
+      await new Promise<void>((resolve, reject) => {
+        window.OneSignal.removeExternalUserId((result: any) => {
+          if (result && result.success !== false) {
+            console.log('✅ OneSignal external user ID removed.');
+            resolve();
+          } else {
+            const error = new Error('Failed to remove external user ID');
+            console.error('❌ Failed to remove OneSignal external user ID:', error);
+            reject(error);
+          }
+        });
+      });
     } catch (error) {
       console.error('❌ Failed to remove OneSignal external user ID:', error);
       throw error;
     }
   }
-
 
   private async doInitialize(): Promise<void> {
     if (this.initializing) return;
@@ -432,7 +447,9 @@ export class OneSignalService {
 
       if (window.OneSignal?.getUserId) {
         try {
-          const id = await window.OneSignal.getUserId();
+          const id = await new Promise<string | null>((resolve) => {
+            window.OneSignal.getUserId((userId: string | null) => resolve(userId));
+          });
           if (id) {
             console.log('🔔 Player ID from legacy API:', id);
             return id;
@@ -478,14 +495,24 @@ export class OneSignalService {
           
           if (window.OneSignal?.registerForPushNotifications) {
             console.log('🔔 Falling back to legacy API');
-            await window.OneSignal.registerForPushNotifications();
+            await new Promise<void>((resolve, reject) => {
+              window.OneSignal.registerForPushNotifications((success: boolean) => {
+                if (success) resolve();
+                else reject(new Error('Legacy registration failed'));
+              });
+            });
           } else {
             throw error;
           }
         }
       } else if (window.OneSignal?.registerForPushNotifications) {
         console.log('🔔 Using legacy API for subscription');
-        await window.OneSignal.registerForPushNotifications();
+        await new Promise<void>((resolve, reject) => {
+          window.OneSignal.registerForPushNotifications((success: boolean) => {
+            if (success) resolve();
+            else reject(new Error('Legacy registration failed'));
+          });
+        });
       } else {
         throw new Error('OneSignal subscription API not available');
       }
@@ -538,7 +565,12 @@ export class OneSignalService {
         await window.OneSignal.User.PushSubscription.optOut();
       } else if (window.OneSignal?.setSubscription) {
         console.log('🔔 Using legacy API for unsubscription');
-        await window.OneSignal.setSubscription(false);
+        await new Promise<void>((resolve, reject) => {
+          window.OneSignal.setSubscription(false, (success: boolean) => {
+            if (success) resolve();
+            else reject(new Error('Unsubscription failed'));
+          });
+        });
       } else {
         throw new Error('OneSignal unsubscribe API not available');
       }
@@ -691,10 +723,19 @@ export class OneSignalService {
         return;
       }
 
+      // FIXED: Use Promise wrapper for callback-based deleteTags
       if (window.OneSignal?.User?.removeTags) {
         await window.OneSignal.User.removeTags(tagKeys);
       } else if (window.OneSignal?.deleteTags) {
-        await window.OneSignal.deleteTags(tagKeys);
+        await new Promise<void>((resolve, reject) => {
+          window.OneSignal.deleteTags(tagKeys, (success: boolean) => {
+            if (success) {
+              resolve();
+            } else {
+              reject(new Error('Failed to delete tags'));
+            }
+          });
+        });
       } else {
         throw new Error('OneSignal remove tags API not available');
       }
