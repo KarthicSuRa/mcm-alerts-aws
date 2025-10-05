@@ -2,14 +2,17 @@ import React from 'react';
 
 interface SwitchProps {
   checked: boolean;
-  onChange: (checked: boolean) => void;
+  // FIX: The onChange handler no longer receives a boolean.
+  // It simply signals that the switch has been toggled.
+  onChange: () => void;
   disabled?: boolean;
 }
 
 export const Switch: React.FC<SwitchProps> = ({ checked, onChange, disabled }) => {
   const handleToggle = () => {
     if (!disabled) {
-      onChange(!checked);
+      // FIX: Call the handler without any arguments.
+      onChange();
     }
   };
 

@@ -1113,79 +1113,168 @@ function App() {
     if (!session) return;
     setIsPushLoading(true);
 
-    try {
+    const operationPromise = (async () => {
       console.log('🔔 Starting push subscription process...');
       
       const playerId = await oneSignalService.subscribe();
       if (!playerId) {
-        throw new Error('Failed to get player ID from OneSignal');
+        throw new Error('Failed to get player ID from OneSignal. The service might be temporarily unavailable.');
+      }
+      
+      // FIX: Re-associate with external user ID after subscription to ensure linkage
+      try {
+        console.log(`🔔 Re-associating OneSignal with external user ID after subscription: ${session.user.id}`);
+        await oneSignalService.login(session.user.id);
+      } catch (error) {
+        console.error('❌ OneSignal re-login after subscription failed (non-fatal):', error);
       }
       
       console.log('🔔 OneSignal subscription successful, player ID:', playerId);
-      
       await oneSignalService.savePlayerIdToDatabase(session.user.id);
       console.log('🔔 Player ID saved to database');
       
-      // Wait for registration to complete
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      
       const subscribedTopics = topics.filter(t => t.subscribed);
       if (subscribedTopics.length > 0) {
-        console.log('🔔 Setting tags for subscribed topics:', subscribedTopics.map(t => t.name));
-        
         try {
           const tags: Record<string, string> = {};
           subscribedTopics.forEach(topic => {
             tags[`topic_${topic.id}`] = '1';
           });
-          
-          console.log('🔔 Tags to set:', tags);
           await oneSignalService.setUserTags(tags);
-          console.log('🔔 Tags set successfully');
+          console.log('🔔 User tags set successfully for subscribed topics.');
         } catch (tagError) {
-          console.error('🔔 Failed to set tags (non-critical):', tagError);
+          console.error('🔔 Failed to set user tags (non-critical):', tagError);
         }
       }
       
-      setIsPushEnabled(true);
-      console.log('🔔 Push notifications enabled successfully');
+      // FIX: Confirm final subscription state
+      const finalSubscribed = await oneSignalService.isSubscribed();
+      setIsPushEnabled(finalSubscribed);
       
+      if (finalSubscribed) {
+        addToast({
+          id: `sys-toast-${Date.now()}`,
+          title: 'Push Notifications Enabled',
+          message: 'You will now receive alerts in the background.',
+          severity: 'low',
+          status: 'new'
+        } as ExtendedNotification);
+      } else {
+        throw new Error('Subscription confirmed as failed after setup.');
+      }
+    })();
+
+    const timeoutPromise = new Promise((_, reject) => 
+      setTimeout(() => reject(new Error('Operation timed out')), 10000) // 10 second timeout
+    );
+
+    try {
+      await Promise.race([operationPromise, timeoutPromise]);
     } catch (error) {
       console.error('🔔 Failed to subscribe to push notifications:', error);
       
       let errorMessage = 'Failed to enable push notifications. ';
       if (error instanceof Error) {
         if (error.message.includes('permission')) {
-          errorMessage += 'Please allow notifications in your browser.';
+          errorMessage += 'Please check your browser settings and allow notifications for this site.';
         } else if (error.message.includes('player ID')) {
-          errorMessage += 'OneSignal registration failed. Please try again.';
+          errorMessage += 'Could not register this device with the push service. Please try again.';
         } else if (error.message.includes('not supported')) {
           errorMessage += 'Your browser does not support push notifications.';
+        } else if (error.message.includes('timed out')) {
+          errorMessage += 'The operation timed out. Please try again.';
         } else {
-          errorMessage += 'Please try again or check your browser settings.';
+          errorMessage += 'An unexpected error occurred. Please try again later.';
         }
       }
+      alert(`DIAGNOSTIC: An error occurred during subscription. Message: ${errorMessage}`);
+      addToast({
+        id: `err-toast-${Date.now()}`,
+        title: 'Subscription Error',
+        message: errorMessage,
+        severity: 'high',
+        status: 'new'
+      } as ExtendedNotification);
       
-      alert(errorMessage);
+      // Since it failed, ensure the state is correct
+      setIsPushEnabled(false);
+
     } finally {
       setIsPushLoading(false);
     }
-  }, [session, topics]);
+  }, [session, topics, addToast, oneSignalService]);
+
   
   const unsubscribeFromPush = useCallback(async () => {
     if (!session) return;
     setIsPushLoading(true);
     
-    try {
+    const operationPromise = (async () => {
       await oneSignalService.unsubscribe();
       await oneSignalService.removePlayerIdFromDatabase(session.user.id);
-      setIsPushEnabled(false);
+      
+      // FIX: Confirm final subscription state
+      const finalSubscribed = await oneSignalService.isSubscribed();
+      setIsPushEnabled(finalSubscribed);
+      
+      addToast({
+        id: `sys-toast-${Date.now()}`,
+        title: 'Push Notifications Disabled',
+        message: 'You will no longer receive background alerts.',
+        severity: 'low',
+        status: 'new'
+      } as ExtendedNotification);
+    })();
+
+    const timeoutPromise = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('Operation timed out')), 10000) // 10 second timeout
+    );
+
+    try {
+      await Promise.race([operationPromise, timeoutPromise]);
     } catch (error) {
-      console.error('Failed to unsubscribe from push:', error);
+      console.error('🔔 Failed to unsubscribe from push notifications:', error);
+      
+      let errorMessage = 'Could not disable push notifications. Please try again.';
+      if (error instanceof Error && error.message.includes('timed out')) {
+        errorMessage = 'The operation timed out. Please try again.';
+      }
+
+      addToast({
+        id: `err-toast-${Date.now()}`,
+        title: 'Unsubscription Error',
+        message: errorMessage,
+        severity: 'high',
+        status: 'new'
+      } as ExtendedNotification);
+
+      // Revert state if unsubscription fails
+      const revertedSubscribed = await oneSignalService.isSubscribed();
+      setIsPushEnabled(revertedSubscribed);
+
     } finally {
       setIsPushLoading(false);
     }
-  }, [session]);
+  }, [session, addToast, oneSignalService]);
+
+
+  // FIX: Set OneSignal tags on load if push is enabled and topics are loaded
+  useEffect(() => {
+    if (isPushEnabled && topics.length > 0 && session) {
+      const subscribedTopics = topics.filter(t => t.subscribed);
+      if (subscribedTopics.length > 0) {
+        const tags: Record<string, string> = {};
+        subscribedTopics.forEach(topic => {
+          tags[`topic_${topic.id}`] = '1';
+        });
+        oneSignalService.setUserTags(tags).then(() => {
+          console.log('🔔 User tags set successfully on app load.');
+        }).catch(e => {
+          console.error('🔔 Failed to set user tags on load:', e);
+        });
+      }
+    }
+  }, [isPushEnabled, topics, session, oneSignalService]);
 
   // Theme effect
   useEffect(() => {

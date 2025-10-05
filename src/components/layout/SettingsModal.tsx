@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Icon } from '../ui/Icon';
 import { Switch } from '../ui/Switch';
 
@@ -11,8 +11,8 @@ interface SettingsModalProps {
   setSnoozedUntil: (date: Date | null) => void;
   isPushEnabled: boolean;
   isPushLoading: boolean;
-  onSubscribeToPush: () => void;
-  onUnsubscribeFromPush: () => void;
+  onSubscribeToPush: () => Promise<void>;
+  onUnsubscribeFromPush: () => Promise<void>;
 }
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({
@@ -27,6 +27,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onSubscribeToPush,
   onUnsubscribeFromPush,
 }) => {
+  // FIX: Add a local loading state for the toggle action
+  const [isToggleLoading, setIsToggleLoading] = useState(false);
+
   if (!isOpen) return null;
 
   const handleSnooze = (minutes: number) => {
@@ -38,6 +41,22 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         setSnoozedUntil(newSnoozeTime);
     }
     onClose();
+  };
+
+  // FIX: Make the handler async and manage local loading state
+  const handlePushToggle = async () => {
+    if (isToggleLoading) return; // Prevent multiple clicks
+    setIsToggleLoading(true);
+
+    try {
+      if (isPushEnabled) {
+        await onUnsubscribeFromPush();
+      } else {
+        await onSubscribeToPush();
+      }
+    } finally {
+      setIsToggleLoading(false);
+    }
   };
 
   return (
@@ -68,7 +87,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     </div>
                     <Switch 
                         checked={soundEnabled} 
-                        onChange={setSoundEnabled} 
+                        onChange={() => setSoundEnabled(!soundEnabled)} 
                     />
                 </div>
 
@@ -80,8 +99,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     </div>
                     <Switch 
                         checked={isPushEnabled} 
-                        onChange={isPushEnabled ? onUnsubscribeFromPush : onSubscribeToPush}
-                        disabled={isPushLoading}
+                        onChange={handlePushToggle}
+                        // FIX: Disable the toggle during the async operation
+                        disabled={isPushLoading || isToggleLoading}
                     />
                 </div>
 
