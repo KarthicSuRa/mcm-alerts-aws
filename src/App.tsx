@@ -551,9 +551,10 @@ function App() {
   useEffect(() => {
     const originalConsoleError = console.error;
     console.error = (...args) => {
-      if (args.length > 0 && (
-        (typeof args[0] === 'string' && args[0].includes('409') && args[0].includes('OneSignal')) ||
-        (args[0] && args[0].status === 409 && args[0].url && args[0].url.includes('onesignal.com'))
+      const firstArg = args[0];
+      if (firstArg && (
+        (typeof firstArg === 'string' && firstArg.includes('409') && firstArg.includes('OneSignal')) ||
+        (firstArg?.status === 409 && firstArg?.url?.includes('api.onesignal.com/apps/') && firstArg?.url?.includes('/users/by/onesignal_id'))
       )) {
         // Suppress non-fatal OneSignal 409s
         return;
@@ -592,6 +593,11 @@ function App() {
         setAuthLoading(false);
         
         if (!session) {
+          // FIXED: Log out of OneSignal to clear external ID and prevent identity conflicts on next login
+          oneSignalService.logout().catch(error => {
+            console.warn('⚠️ OneSignal logout on session end failed (non-fatal):', error);
+          });
+          
           // Reset all state when user logs out
           setUnauthedPage('landing');
           dataFetched.current = false;
@@ -632,7 +638,7 @@ function App() {
       pendingUpdates.current.forEach(timeout => clearTimeout(timeout));
       pendingUpdates.current.clear();
     };
-  }, []);
+  }, [navigate, oneSignalService]);
 
   const mapOneSignalSeverity = useCallback((notification: any): Severity => {
     if (notification.data?.severity) {
