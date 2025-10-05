@@ -1,3 +1,6 @@
+// Import the OneSignal SDK Service Worker
+importScripts('https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.sw.js');
+
 // Service Worker for MCM Alerts with OneSignal integration
 const CACHE_NAME = 'mcm-alerts-cache-v1';
 const STATIC_ASSETS = [
@@ -201,46 +204,6 @@ function updateCacheInBackground(request, cache) {
     });
 }
 
-// Handle push events (OneSignal will primarily handle this, but we can add custom handling)
-self.addEventListener('push', event => {
-  console.log('Service Worker: Push event received');
-  
-  // Let OneSignal handle the push notification
-  // This is mainly for debugging or custom handling if needed
-  if (event.data) {
-    try {
-      const data = event.data.json();
-      console.log('Service Worker: Push data:', data);
-    } catch (error) {
-      console.log('Service Worker: Push data (text):', event.data.text());
-    }
-  }
-});
-
-// Handle notification click events
-self.addEventListener('notificationclick', event => {
-  console.log('Service Worker: Notification clicked');
-  
-  event.notification.close();
-  
-  // Focus or open the app window
-  event.waitUntil(
-    clients.matchAll({ type: 'window', includeUncontrolled: true }).then(clientList => {
-      // If the app is already open, focus it
-      for (const client of clientList) {
-        if (client.url.includes(self.location.origin) && 'focus' in client) {
-          return client.focus();
-        }
-      }
-      
-      // If the app is not open, open it
-      if (clients.openWindow) {
-        return clients.openWindow('/');
-      }
-    })
-  );
-});
-
 // Handle background sync (for offline functionality)
 self.addEventListener('sync', event => {
   console.log('Service Worker: Background sync triggered:', event.tag);
@@ -292,7 +255,3 @@ self.addEventListener('unhandledrejection', event => {
 });
 
 console.log('Service Worker: Script loaded successfully');
-
-// Important: OneSignal will handle most push notification functionality
-// This service worker focuses on caching and basic PWA functionality
-// Make sure OneSignal's service worker is properly registered alongside this one
