@@ -15,7 +15,7 @@ import { Sidebar } from './components/layout/Sidebar';
 import IntegrationPage from './pages/IntegrationPage';
 import { SettingsModal } from './components/layout/SettingsModal';
 import { NotificationToast } from './components/ui/NotificationToast';
-import { Theme, type Notification, Severity, NotificationStatus, SystemStatusData, Session, Comment, NotificationUpdatePayload, Topic, Database, MonitoredSite } from './types';
+import { Theme, type Notification, Severity, NotificationStatus, SystemStatusData, Session, Comment, NotificationUpdatePayload, Topic, Database, MonitoredSite, ExtendedNotification } from './types';
 import { supabase } from './lib/supabaseClient';
 import { OneSignalService } from './lib/oneSignalService';
 import { ThemeContext } from './contexts/ThemeContext';
@@ -24,6 +24,8 @@ import { SiteDetailPage } from './pages/monitoring/SiteDetailPage';
 import UserManagementPage from './pages/UserManagementPage';
 import SyntheticTestRunner from './components/SyntheticTestRunner';
 import ErrorBoundary from './components/ui/ErrorBoundary';
+import { useServiceWorker } from './hooks/useServiceWorker';
+import { setToastHandler } from './utils/toast';
 
 type NotificationFromDB = Database['public']['Tables']['notifications']['Row'];
 type CommentFromDB = Database['public']['Tables']['comments']['Row'];
@@ -31,9 +33,6 @@ type TopicFromDB = Database['public']['Tables']['topics']['Row'];
 type SubscriptionFromDB = Database['public']['Tables']['topic_subscriptions']['Row'];
 type Team = Database['public']['Tables']['teams']['Row'];
 
-interface ExtendedNotification extends Notification {
-  oneSignalId?: string;
-}
 
 interface Profile {
   id: string;
@@ -64,7 +63,7 @@ function App() {
   const [profileError, setProfileError] = useState<string | null>(null);
   const navigate = useNavigate();
   const location = useLocation();
-
+  
   const oneSignalService = OneSignalService.getInstance();
   const oneSignalInitialized = useRef(false);
   const dataFetched = useRef(false);
@@ -99,7 +98,14 @@ function App() {
   const removeToast = useCallback((id: string) => {
     setToasts(prev => prev.filter(t => t.id !== id));
   }, []);
+  useServiceWorker();
 
+  useEffect(() => {
+    setToastHandler(addToast);
+    return () => {
+      setToastHandler(() => {});
+    };
+  }, [addToast]);
   const systemStatus: SystemStatusData = useMemo(() => ({
     status: 'operational',
     message: 'All systems normal',

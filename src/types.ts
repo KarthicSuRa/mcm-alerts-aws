@@ -494,6 +494,11 @@ export interface Notification {
   resolvedAt?: string;
 }
 
+export interface ExtendedNotification extends Notification {
+  oneSignalId?: string;
+  onConfirm?: () => void;
+}
+
 export type NotificationUpdatePayload = Database['public']['Tables']['notifications']['Update'];
 
 export interface Topic {
