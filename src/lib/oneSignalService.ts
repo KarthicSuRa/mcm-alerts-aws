@@ -112,7 +112,7 @@ export class OneSignalService {
                 appId: this.appId,
                 allowLocalhostAsSecureOrigin: true,
                 serviceWorkerParam: { scope: '/onesignal/' },
-                serviceWorkerPath: 'onesignal/OneSignalSDKWorker.js',
+                serviceWorkerPath: 'OneSignalSDKWorker.js',
                 notifyButton: { enable: false },
                 persistNotification: true,
                 autoRegister: false, // We will register manually.
@@ -144,7 +144,7 @@ export class OneSignalService {
           appId: this.appId,
           allowLocalhostAsSecureOrigin: true,
           serviceWorkerParam: { scope: '/onesignal/' },
-          serviceWorkerPath: 'onesignal/OneSignalSDKWorker.js',
+          serviceWorkerPath: 'OneSignalSDKWorker.js',
           notifyButton: { enable: false },
           persistNotification: true,
           autoRegister: false, // We will register manually.
