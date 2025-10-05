@@ -547,6 +547,22 @@ function App() {
     return () => clearInterval(healthCheckInterval);
   }, [session, forceRefreshNotifications, setupRealtimeSubscriptions]);
 
+  // Suppress non-fatal OneSignal 409 console errors
+  useEffect(() => {
+    const originalConsoleError = console.error;
+    console.error = (...args) => {
+      if (args.length > 0 && (
+        (typeof args[0] === 'string' && args[0].includes('409') && args[0].includes('OneSignal')) ||
+        (args[0] && args[0].status === 409 && args[0].url && args[0].url.includes('onesignal.com'))
+      )) {
+        // Suppress non-fatal OneSignal 409s
+        return;
+      }
+      originalConsoleError.apply(console, args);
+    };
+    return () => { console.error = originalConsoleError; };
+  }, []);
+
   // Auth Effect - Simplified and optimized
   useEffect(() => {
     let mounted = true;
@@ -1270,11 +1286,15 @@ function App() {
         subscribedTopics.forEach(topic => {
           tags[`topic_${topic.id}`] = '1';
         });
-        oneSignalService.setUserTags(tags).then(() => {
-          console.log('🔔 User tags set successfully on app load.');
-        }).catch(e => {
-          console.error('🔔 Failed to set user tags on load (non-fatal):', e);
-        });
+        // FIXED: Add delay to avoid race with login/external ID propagation
+        setTimeout(async () => {
+          try {
+            await oneSignalService.setUserTags(tags);
+            console.log('🔔 User tags set successfully on app load.');
+          } catch (e) {
+            console.error('🔔 Failed to set user tags on load (non-fatal):', e);
+          }
+        }, 1500); // 1.5s delay; adjust if needed (e.g., 1000-2000ms)
       }
     }
   }, [isPushEnabled, topics.length, session?.user.id, oneSignalService]); // FIXED: Stable deps (use topics.length instead of topics)
