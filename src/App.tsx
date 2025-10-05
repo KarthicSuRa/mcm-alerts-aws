@@ -77,8 +77,7 @@ function App() {
   const lastActivity = useRef(Date.now());
   const oneSignalOperationInProgress = useRef(false);
   const tagsSetSuccessfully = useRef(false);
-  const loginAttempted = useRef(false);
-
+  
   const currentPage = useMemo(() => {
     const path = location.pathname;
     if (path.startsWith('/site-monitoring') || path.startsWith('/monitoring')) return 'site-monitoring';
@@ -575,7 +574,6 @@ function App() {
           initializationInProgress.current = false;
           oneSignalOperationInProgress.current = false;
           tagsSetSuccessfully.current = false;
-          loginAttempted.current = false;
           setNotifications([]);
           setTopics([]);
           setToasts([]);
@@ -680,44 +678,59 @@ function App() {
   }, [soundEnabled, snoozedUntil, topics, addToast]);
 
   useEffect(() => {
-    if (!session || authLoading || oneSignalInitialized.current) {
+    if (!session || authLoading) {
       return;
     }
 
-    const initOneSignal = async () => {
-      if (initializationInProgress.current || oneSignalOperationInProgress.current) {
-        console.log('⏸️ OneSignal operation already in progress, skipping...');
+    // This flag prevents re-initialization within the same session
+    if (oneSignalInitialized.current) {
         return;
-      }
+    }
+
+    const initOneSignal = async () => {
+      // Use a single flag to prevent re-entry.
+      if (initializationInProgress.current) return;
 
       try {
         initializationInProgress.current = true;
-        oneSignalOperationInProgress.current = true;
         setIsPushLoading(true);
         console.log('🔔 Initializing OneSignal...');
-        
+
+        // Step 1: Initialize the SDK.
         await oneSignalService.initialize();
-        await new Promise(resolve => setTimeout(resolve, 1500));
+        console.log('🔔 SDK Initialized. Clearing any existing user identity...');
+        
+        // Step 2: Force logout to clear any stale identity from the device.
+        // This is crucial to prevent identity conflicts when switching users.
+        await oneSignalService.logout();
+        console.log('🔔 Identity cleared. Logging in new user...');
 
-        if (!loginAttempted.current) {
+        // Step 3: Log in the new user with retries to handle backend race conditions.
+        let loginAttempts = 0;
+        const maxLoginAttempts = 3;
+        while (loginAttempts < maxLoginAttempts) {
           try {
-            console.log('🔔 Logging out existing OneSignal user to clear identity...');
-            await oneSignalService.logout();
-            await new Promise(resolve => setTimeout(resolve, 800));
-          } catch (logoutError) {
-            console.warn('⚠️ OneSignal logout before login failed (non-fatal):', logoutError);
-          }
-
-          try {
-            console.log(`🔔 Logging into OneSignal with external user ID: ${session.user.id}`);
             await oneSignalService.login(session.user.id);
-            loginAttempted.current = true;
-            await new Promise(resolve => setTimeout(resolve, 1000));
-          } catch (error) {
-            console.error('❌ OneSignal login failed:', error);
+            console.log(`✅ OneSignal login successful for user: ${session.user.id}`);
+            break; // Success, exit loop
+          } catch (error: any) {
+            // Check if the error is a 409 conflict
+            if (error?.status === 409 || (typeof error?.message === 'string' && error.message.includes('409'))) {
+              loginAttempts++;
+              if (loginAttempts >= maxLoginAttempts) {
+                console.error(`❌ OneSignal login failed after ${maxLoginAttempts} attempts due to persistent 409 conflict.`);
+                throw error; // Rethrow after final attempt
+              }
+              console.warn(`⚠️ OneSignal login conflict (409). Retrying attempt ${loginAttempts}/${maxLoginAttempts}...`);
+              await new Promise(resolve => setTimeout(resolve, 1500 * loginAttempts)); // Exponential backoff
+            } else {
+              // It's a different error, so we should fail fast.
+              throw error;
+            }
           }
         }
-        
+
+        // Step 4: Set up listeners and update UI state.
         const isSubscribed = await oneSignalService.isSubscribed();
         console.log('🔔 OneSignal subscription status on load:', isSubscribed);
         setIsPushEnabled(isSubscribed);
@@ -730,14 +743,13 @@ function App() {
         oneSignalService.setupForegroundNotifications(handleNewNotification);
         
         oneSignalInitialized.current = true;
-        console.log('✅ OneSignal initialization completed');
+        console.log('✅ OneSignal initialization and login sequence completed');
 
       } catch (error) {
-        console.error('❌ Failed to initialize OneSignal:', error);
+        console.error('❌ Failed to complete OneSignal setup:', error);
       } finally {
         setIsPushLoading(false);
         initializationInProgress.current = false;
-        oneSignalOperationInProgress.current = false;
       }
     };
 

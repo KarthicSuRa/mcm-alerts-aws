@@ -78,19 +78,13 @@ export class OneSignalService {
 
   // FIXED: Updated to use OneSignal.logout() (new API, replaces removeExternalUserId)
   public async logout(): Promise<void> {
-    if (!this.initialized) {
-      console.warn('OneSignal not initialized, cannot log out.');
-      return;
-    }
-
     try {
+      await this.initialize();
       console.log('Removing OneSignal external user ID.');
-      // Use modern promise-based logout
       await window.OneSignal.logout();
       console.log('✅ OneSignal external user ID removed via logout().');
     } catch (error) {
-      console.error('❌ Failed to remove OneSignal external user ID:', error);
-      throw error;
+      console.error('❌ Failed to process OneSignal logout (non-fatal):', error);
     }
   }
 
