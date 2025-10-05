@@ -732,6 +732,14 @@ function App() {
         
         await oneSignalService.initialize();
 
+        // --- FIX: First log out any existing OneSignal user to resolve identity conflicts ---
+        try {
+          console.log('🔔 Logging out existing OneSignal user to clear identity...');
+          await oneSignalService.logout();
+        } catch (logoutError) {
+          console.warn('⚠️ OneSignal logout before login failed (non-fatal):', logoutError);
+        }
+
         // --- FIX: Log user into OneSignal for persistence ---
         try {
           console.log(`🔔 Logging into OneSignal with external user ID: ${session.user.id}`);
