@@ -547,16 +547,17 @@ function App() {
     return () => clearInterval(healthCheckInterval);
   }, [session, forceRefreshNotifications, setupRealtimeSubscriptions]);
 
-  // FIXED: Suppress non-fatal OneSignal 409 console errors (enhanced for exact match)
+  // FIXED: Suppress non-fatal OneSignal 409 console errors (enhanced to catch SDK request logs)
   useEffect(() => {
     const originalConsoleError = console.error;
     console.error = (...args) => {
       const firstArg = args[0];
       if (firstArg && (
         (typeof firstArg === 'string' && firstArg.includes('Operation execution failed without retry') && firstArg.includes('set-property')) ||
-        (firstArg?.status === 409 && firstArg?.url?.includes('/users/by/onesignal_id'))
+        (firstArg?.status === 409 && firstArg?.url?.includes('/users/by/onesignal_id')) ||
+        (args.length >= 3 && typeof args[2] === 'number' && args[2] === 409 && typeof args[1] === 'string' && args[1].includes('api.onesignal.com'))
       )) {
-        return; // Suppress the exact tags failure log
+        return; // Suppress the exact tags failure log and SDK request errors
       }
       originalConsoleError.apply(console, args);
     };
@@ -736,6 +737,8 @@ function App() {
         try {
           console.log('🔔 Logging out existing OneSignal user to clear identity...');
           await oneSignalService.logout();
+          // Add delay to ensure logout propagates
+          await new Promise(resolve => setTimeout(resolve, 500));
         } catch (logoutError) {
           console.warn('⚠️ OneSignal logout before login failed (non-fatal):', logoutError);
         }
@@ -897,6 +900,12 @@ function App() {
     let mounted = true;
     
     const fetchInitialData = async () => {
+      // FIXED: Prevent duplicate fetches from multiple effect triggers
+      if (dataFetched.current) {
+        console.log('⏭️ Data already fetched, skipping');
+        return;
+      }
+
       try {
         console.log('📊 Fetching initial data for user:', session.user.id);
         
@@ -1152,13 +1161,13 @@ function App() {
         throw new Error('Failed to get player ID from OneSignal. The service might be temporarily unavailable.');
       }
       
-      // FIX: Re-associate with external user ID after subscription to ensure linkage
-      try {
-        console.log(`🔔 Re-associating OneSignal with external user ID after subscription: ${session.user.id}`);
-        await oneSignalService.login(session.user.id);
-      } catch (error) {
-        console.error('❌ OneSignal re-login after subscription failed (non-fatal):', error);
-      }
+      // FIXED: Remove re-login - identity already set during init to avoid conflicts
+      // try {
+      //   console.log(`🔔 Re-associating OneSignal with external user ID after subscription: ${session.user.id}`);
+      //   await oneSignalService.login(session.user.id);
+      // } catch (error) {
+      //   console.error('❌ OneSignal re-login after subscription failed (non-fatal):', error);
+      // }
       
       console.log('🔔 OneSignal subscription successful, player ID:', playerId);
       await oneSignalService.savePlayerIdToDatabase(session.user.id);
