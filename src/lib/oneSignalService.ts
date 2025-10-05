@@ -170,8 +170,14 @@ export class OneSignalService {
       this.initialized = true;
       console.log('✅ OneSignal initialized successfully');
       
-    } catch (error) {
+    } catch (error: any) {
       console.error('❌ Failed to initialize OneSignal:', error);
+      
+      // FIXED: Skip retries for origin/config errors (prevents "already initialized" loop)
+      if (error.message?.includes('origin') || error.message?.includes('restricted') || error.message?.includes('site URL')) {
+        console.error('❌ Origin mismatch - configure Site URL in OneSignal Dashboard for this domain');
+        throw new Error(`OneSignal origin mismatch: ${error.message}. Update dashboard Site URL to match current origin.`);
+      }
       
       if (this.retryCount < this.maxRetries) {
         this.retryCount++;
@@ -316,7 +322,12 @@ export class OneSignalService {
 
     try {
       await window.OneSignal.User.addTags(tags);
-    } catch (error) {
+    } catch (error: any) {
+      // FIXED: Ignore 409 conflicts (known race; SDK retries async)
+      if (error?.status === 409 || error.message?.includes('Conflict')) {
+        console.warn('⚠️ OneSignal tags 409 conflict (race condition) – SDK will retry async');
+        return; // Non-blocking: Tags sync eventually
+      }
       console.error('❌ Failed to set user tags:', error);
       throw error;
     }

@@ -78,6 +78,7 @@ function App() {
   const reconnectAttempts = useRef(0);
   const maxReconnectAttempts = 5;
   const lastActivity = useRef(Date.now());
+  const tagsSetRef = useRef(false); // FIXED: Debounce tags setting
 
   const currentPage = useMemo(() => {
     const path = location.pathname;
@@ -586,6 +587,7 @@ function App() {
           setProfile(null);
           setIsPushEnabled(false);
           setIsPushLoading(false);
+          tagsSetRef.current = false; // FIXED: Reset tags ref on logout
           
           // Clear pending updates
           pendingUpdates.current.forEach(timeout => clearTimeout(timeout));
@@ -1048,7 +1050,7 @@ function App() {
       
       cleanup();
     };
-  }, [session, authLoading, handleNewNotification, setupRealtimeSubscriptions]);
+  }, [session, authLoading]); // FIXED: Removed unstable deps (handleNewNotification, setupRealtimeSubscriptions) to prevent loops
 
   // Fetch Monitored Sites
   useEffect(() => {
@@ -1258,9 +1260,10 @@ function App() {
   }, [session, addToast, oneSignalService]);
 
 
-  // FIX: Set OneSignal tags on load if push is enabled and topics are loaded
+  // FIXED: Set OneSignal tags on load if push is enabled and topics are loaded (debounced with ref)
   useEffect(() => {
-    if (isPushEnabled && topics.length > 0 && session) {
+    if (isPushEnabled && topics.length > 0 && session && !tagsSetRef.current) {
+      tagsSetRef.current = true; // FIXED: Prevent multiple runs
       const subscribedTopics = topics.filter(t => t.subscribed);
       if (subscribedTopics.length > 0) {
         const tags: Record<string, string> = {};
@@ -1270,11 +1273,11 @@ function App() {
         oneSignalService.setUserTags(tags).then(() => {
           console.log('🔔 User tags set successfully on app load.');
         }).catch(e => {
-          console.error('🔔 Failed to set user tags on load:', e);
+          console.error('🔔 Failed to set user tags on load (non-fatal):', e);
         });
       }
     }
-  }, [isPushEnabled, topics, session, oneSignalService]);
+  }, [isPushEnabled, topics.length, session?.user.id, oneSignalService]); // FIXED: Stable deps (use topics.length instead of topics)
 
   // Theme effect
   useEffect(() => {
