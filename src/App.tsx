@@ -547,17 +547,16 @@ function App() {
     return () => clearInterval(healthCheckInterval);
   }, [session, forceRefreshNotifications, setupRealtimeSubscriptions]);
 
-  // Suppress non-fatal OneSignal 409 console errors
+  // FIXED: Suppress non-fatal OneSignal 409 console errors (enhanced for exact match)
   useEffect(() => {
     const originalConsoleError = console.error;
     console.error = (...args) => {
       const firstArg = args[0];
       if (firstArg && (
-        (typeof firstArg === 'string' && firstArg.includes('409') && firstArg.includes('OneSignal')) ||
-        (firstArg?.status === 409 && firstArg?.url?.includes('api.onesignal.com/apps/') && firstArg?.url?.includes('/users/by/onesignal_id'))
+        (typeof firstArg === 'string' && firstArg.includes('Operation execution failed without retry') && firstArg.includes('set-property')) ||
+        (firstArg?.status === 409 && firstArg?.url?.includes('/users/by/onesignal_id'))
       )) {
-        // Suppress non-fatal OneSignal 409s
-        return;
+        return; // Suppress the exact tags failure log
       }
       originalConsoleError.apply(console, args);
     };
@@ -1292,15 +1291,23 @@ function App() {
         subscribedTopics.forEach(topic => {
           tags[`topic_${topic.id}`] = '1';
         });
-        // FIXED: Add delay to avoid race with login/external ID propagation
+        // FIXED: Bump delay + poll for ready state
         setTimeout(async () => {
-          try {
-            await oneSignalService.setUserTags(tags);
-            console.log('🔔 User tags set successfully on app load.');
-          } catch (e) {
-            console.error('🔔 Failed to set user tags on load (non-fatal):', e);
+          let attempts = 0;
+          while (attempts < 3) {
+            try {
+              await oneSignalService.setUserTags(tags);
+              console.log('🔔 User tags set successfully on app load.');
+              break;
+            } catch (e: any) {
+              if (e?.status === 409) {
+                attempts++;
+                console.warn(`⚠️ Tags race (attempt ${attempts}/3)—waiting 1s...`);
+                await new Promise(resolve => setTimeout(resolve, 1000));
+              } else throw e;
+            }
           }
-        }, 1500); // 1.5s delay; adjust if needed (e.g., 1000-2000ms)
+        }, 2500); // 2.5s delay
       }
     }
   }, [isPushEnabled, topics.length, session?.user.id, oneSignalService]); // FIXED: Stable deps (use topics.length instead of topics)
