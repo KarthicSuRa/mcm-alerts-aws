@@ -70,7 +70,12 @@ export class OneSignalService {
       // Use modern promise-based login
       await window.OneSignal.login(externalUserId);
       console.log('✅ OneSignal external user ID set via login().');
-    } catch (error) {
+    } catch (error: any) {
+        // Handle the case where the external user ID is already associated with another OneSignal user
+        if (error?.status === 409 || error.message?.includes('Conflict')) {
+            console.warn('⚠️ OneSignal login 409 conflict (race condition) – SDK will handle this async');
+            return; 
+        }
       console.error('❌ Failed to set OneSignal external user ID:', error);
       throw error;
     }
