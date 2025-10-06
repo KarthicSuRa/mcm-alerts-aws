@@ -86,7 +86,6 @@ export class OneSignalService {
         await this.initialize();
         console.log("🔔 Triggering native browser prompt for push notifications...");
         
-        // This forces the native prompt to appear without a soft-prompt
         await window.OneSignal.Notifications.requestPermission();
         
         const isPushEnabled = window.OneSignal.Notifications.permission;
@@ -96,7 +95,7 @@ export class OneSignalService {
         }
         
         console.log('👍 Permission granted. Subscribing for a new push token...');
-        const token = await window.OneSignal.getPushSubscriptionId();
+        const token = await window.OneSignal.User.getPushSubscriptionId();
         if (!token) {
             console.error('❌ Could not get a push subscription token after permission grant.');
             return null;
@@ -108,21 +107,21 @@ export class OneSignalService {
 
     public async unsubscribe(): Promise<void> {
         await this.initialize();
-        const isSubscribed = await this.isSubscribed();
-        if (isSubscribed) {
-            await window.OneSignal.setSubscription(false);
-            console.log('✅ Unsubscribed from push notifications.');
+        const isEnabled = window.OneSignal.Notifications.permission;
+        if (isEnabled) {
+            await window.OneSignal.Notifications.disablePush();
+            console.log('✅ Disabled push notifications.');
         }
     }
 
     public async isSubscribed(): Promise<boolean> {
         await this.initialize();
-        return await window.OneSignal.isPushNotificationsEnabled();
+        return window.OneSignal.Notifications.permission;
     }
 
     public async getPlayerId(): Promise<string | null> {
         await this.initialize();
-        return await window.OneSignal.getUserId();
+        return window.OneSignal.User.getPushSubscriptionId();
     }
 
     public async savePlayerIdToDatabase(userId: string): Promise<void> {
@@ -156,7 +155,9 @@ export class OneSignalService {
     }
     
     public onSubscriptionChange(callback: (isSubscribed: boolean) => void): void {
-        window.OneSignal.on('subscriptionChange', callback);
+        window.OneSignal.Notifications.addEventListener('change', (event: any) => {
+            callback(event.permission);
+        });
     }
 
     public setupForegroundNotifications(handler: (notification: any) => void): void {
@@ -170,13 +171,13 @@ export class OneSignalService {
     
     public async setUserTags(tags: { [key: string]: string }): Promise<void> {
         await this.initialize();
-        await window.OneSignal.sendTags(tags);
+        await window.OneSignal.User.addTags(tags);
         console.log('OneSignal tags set:', tags);
     }
 
     public async removeUserTags(tags: string[]): Promise<void> {
         await this.initialize();
-        await window.OneSignal.deleteTags(tags);
+        await window.OneSignal.User.removeTags(tags);
         console.log('OneSignal tags removed:', tags);
     }
 }
