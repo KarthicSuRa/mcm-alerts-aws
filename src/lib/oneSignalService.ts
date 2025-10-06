@@ -84,12 +84,24 @@ export class OneSignalService {
 
     public async subscribe(): Promise<string | null> {
         await this.initialize();
-        console.log("🔔 Opting in for push notifications...");
-        await window.OneSignal.User.pushSubscription.optIn();
         
+        // Step 1: Always request the native browser permission first.
+        await window.OneSignal.Notifications.requestPermission();
+        const hasPermission = window.OneSignal.Notifications.permission;
+        if (!hasPermission) {
+            console.warn('✋ Browser permission for notifications was denied.');
+            return null;
+        }
+
+        // Step 2: Now that permission is granted, opt the user in.
+        // The SDK will create the pushSubscription object if it doesn't exist.
+        await window.OneSignal.User.pushSubscription.optIn();
+        console.log('🔔 User opted in for push notifications.');
+
+        // Step 3: Retrieve the subscription token.
         const token = await window.OneSignal.User.getPushSubscriptionId();
         if (!token) {
-            console.warn('✋ Push notification subscription token could not be retrieved after opt-in.');
+            console.error('❌ Could not get a push subscription token after opt-in.');
             return null;
         }
 
@@ -99,19 +111,25 @@ export class OneSignalService {
 
     public async unsubscribe(): Promise<void> {
         await this.initialize();
-        console.log("🔕 Opting out of push notifications...");
-        await window.OneSignal.User.pushSubscription.optOut();
-        console.log('✅ Opted out of push notifications.');
+        // Defensively check if the object exists before trying to use it.
+        if (window.OneSignal.User.pushSubscription) {
+            await window.OneSignal.User.pushSubscription.optOut();
+            console.log('✅ Opted out of push notifications.');
+        }
     }
 
     public async isSubscribed(): Promise<boolean> {
         await this.initialize();
+        // If the pushSubscription object doesn't exist, the user cannot be subscribed.
+        if (!window.OneSignal.User.pushSubscription) {
+            return false;
+        }
         return window.OneSignal.User.pushSubscription.optedIn;
     }
 
     public async getPlayerId(): Promise<string | null> {
         await this.initialize();
-        // The Push Subscription ID is the modern equivalent of the Player ID
+        // The Push Subscription ID is the modern equivalent of the Player ID.
         return window.OneSignal.User.getPushSubscriptionId();
     }
 
@@ -146,9 +164,18 @@ export class OneSignalService {
     }
     
     public onSubscriptionChange(callback: (isSubscribed: boolean) => void): void {
-        window.OneSignal.User.pushSubscription.addEventListener('change', (change: any) => {
-            callback(change.current.optedIn);
-        });
+        const setupListener = () => {
+            if (window.OneSignal && window.OneSignal.User && window.OneSignal.User.pushSubscription) {
+                window.OneSignal.User.pushSubscription.addEventListener('change', (change: any) => {
+                    callback(change.current.optedIn);
+                });
+            } else {
+                // If the object doesn't exist yet, retry in a moment. 
+                // This can happen on first load for a new user.
+                setTimeout(setupListener, 500);
+            }
+        };
+        this.waitForOneSignal().then(setupListener);
     }
 
     public setupForegroundNotifications(handler: (notification: any) => void): void {
