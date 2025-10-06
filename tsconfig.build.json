@@ -14,7 +14,7 @@
     "moduleResolution": "node",
     "target": "ES2020",
     "module": "ESNext",
-    "lib": ["ES2020", "DOM", "DOM.Iterable"],
+    "lib": ["ES2020", "DOM", "DOM.Iterable", "webworker"],
     "types": ["vite/client"]
   },
   "include": [
