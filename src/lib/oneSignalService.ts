@@ -85,23 +85,22 @@ export class OneSignalService {
     public async subscribe(): Promise<string | null> {
         await this.initialize();
         
-        // Step 1: Always request the native browser permission first.
+        console.log("🔔 Requesting browser permission for notifications...");
+        // Step 1: Request the native browser permission. This is the main subscription action.
         await window.OneSignal.Notifications.requestPermission();
+        
+        // Step 2: Check if permission was actually granted.
         const hasPermission = window.OneSignal.Notifications.permission;
         if (!hasPermission) {
             console.warn('✋ Browser permission for notifications was denied.');
             return null;
         }
+        console.log('👍 Permission granted.');
 
-        // Step 2: Now that permission is granted, opt the user in.
-        // The SDK will create the pushSubscription object if it doesn't exist.
-        await window.OneSignal.User.pushSubscription.optIn();
-        console.log('🔔 User opted in for push notifications.');
-
-        // Step 3: Retrieve the subscription token.
+        // Step 3: Retrieve the subscription token. After permission is granted, a token should be available.
         const token = await window.OneSignal.User.getPushSubscriptionId();
         if (!token) {
-            console.error('❌ Could not get a push subscription token after opt-in.');
+            console.error('❌ Could not get a push subscription token after permission grant.');
             return null;
         }
 
@@ -111,8 +110,8 @@ export class OneSignalService {
 
     public async unsubscribe(): Promise<void> {
         await this.initialize();
-        // Defensively check if the object exists before trying to use it.
-        if (window.OneSignal.User.pushSubscription) {
+        // Defensively check if the user is actually subscribed before trying to opt out.
+        if (window.OneSignal.User.pushSubscription && window.OneSignal.User.pushSubscription.optedIn) {
             await window.OneSignal.User.pushSubscription.optOut();
             console.log('✅ Opted out of push notifications.');
         }
@@ -165,13 +164,13 @@ export class OneSignalService {
     
     public onSubscriptionChange(callback: (isSubscribed: boolean) => void): void {
         const setupListener = () => {
-            if (window.OneSignal && window.OneSignal.User && window.OneSignal.User.pushSubscription) {
+            // Use a try-catch block to handle the case where pushSubscription doesn't exist yet.
+            try {
                 window.OneSignal.User.pushSubscription.addEventListener('change', (change: any) => {
                     callback(change.current.optedIn);
                 });
-            } else {
-                // If the object doesn't exist yet, retry in a moment. 
-                // This can happen on first load for a new user.
+            } catch (e) {
+                // If the object doesn't exist yet, retry in a moment.
                 setTimeout(setupListener, 500);
             }
         };
