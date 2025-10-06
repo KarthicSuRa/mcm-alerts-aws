@@ -117,6 +117,20 @@ function App() {
     subscription: isPushEnabled ? 'Active' : 'Inactive',
   }), [isPushEnabled]);
 
+  const waitForOneSignal = useCallback(async (maxWaitMs: number = 10000): Promise<boolean> => {
+    console.log('🔔 Waiting for OneSignal SDK to load...');
+    const startTime = Date.now();
+    while (Date.now() - startTime < maxWaitMs) {
+      if (window.OneSignal) {
+        console.log('✅ OneSignal SDK detected');
+        return true;
+      }
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+    console.error('❌ OneSignal SDK failed to load within timeout');
+    return false;
+  }, []);
+
   const forceRefreshNotifications = useCallback(async () => {
     if (!session) return;
     
@@ -701,8 +715,11 @@ function App() {
         setIsPushLoading(true);
         console.log('🔔 Initializing OneSignal...');
 
-        // Enable verbose logging for debugging
-        window.OneSignal.setLogLevel(4);
+        // Wait for OneSignal SDK to load
+        const isOneSignalLoaded = await waitForOneSignal();
+        if (!isOneSignalLoaded) {
+          throw new Error('OneSignal SDK failed to load');
+        }
 
         // Initialize SDK and clean stale data
         await oneSignalService.initialize();
@@ -711,6 +728,14 @@ function App() {
         await oneSignalService.cleanStalePlayerIds(session.user.id);
         await oneSignalService.logout();
         console.log('🔔 Identity cleared. Logging in new user...');
+
+        // Enable verbose logging for debugging after init
+        if (window.OneSignal?.Debug?.setLogLevel) {
+          window.OneSignal.Debug.setLogLevel('trace');
+          console.log('✅ Set OneSignal debug level to trace');
+        } else {
+          console.warn('⚠️ OneSignal.Debug.setLogLevel not available - continuing without debug mode');
+        }
 
         // Login with retries for 409 conflicts
         let loginAttempts = 0;
@@ -748,6 +773,13 @@ function App() {
 
       } catch (error) {
         console.error('❌ Failed to complete OneSignal setup:', error);
+        addToast({
+          id: `err-toast-${Date.now()}`,
+          title: 'OneSignal Initialization Error',
+          message: 'Failed to initialize push notifications. Please try refreshing the page.',
+          severity: 'high',
+          status: 'new'
+        } as ExtendedNotification);
       } finally {
         setIsPushLoading(false);
         initializationInProgress.current = false;
@@ -755,7 +787,7 @@ function App() {
     };
 
     initOneSignal();
-  }, [session, authLoading, oneSignalService, handleNewNotification]);
+  }, [session, authLoading, oneSignalService, handleNewNotification, addToast, waitForOneSignal]);
 
   const updateNotification = useCallback(async (notificationId: string, updates: NotificationUpdatePayload) => {
     console.log('🔧 Updating notification:', { notificationId, updates });
