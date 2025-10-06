@@ -144,8 +144,8 @@ export class OneSignalService {
       await window.OneSignal.init({
         appId: this.appId,
         allowLocalhostAsSecureOrigin: true,
-        serviceWorkerParam: { scope: '/onesignal/' },
-        serviceWorkerPath: 'onesignal/OneSignalSDKWorker.js',
+        serviceWorkerParam: { scope: '/' },
+        serviceWorkerPath: '/sw.js',
         notifyButton: {
           enable: false,
         },
