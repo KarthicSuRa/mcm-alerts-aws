@@ -7,9 +7,10 @@ interface NotificationDetailProps {
     onUpdateNotification: (notificationId: string, updates: NotificationUpdatePayload) => void;
     onAddComment: (notificationId: string, text: string) => void;
     session: Session;
+    userNames: Map<string, string>;
 }
 
-export const NotificationDetail: React.FC<NotificationDetailProps> = ({ notification, onUpdateNotification, onAddComment, session }) => {
+export const NotificationDetail: React.FC<NotificationDetailProps> = ({ notification, onUpdateNotification, onAddComment, session, userNames }) => {
     const [commentText, setCommentText] = useState('');
 
     const handleStatusUpdate = (status: NotificationStatus, actionText?: string) => {
@@ -41,7 +42,8 @@ export const NotificationDetail: React.FC<NotificationDetailProps> = ({ notifica
                 <div className="space-y-4 max-h-56 overflow-y-auto pr-2 -mr-2">
                     {[...(notification.comments || [])].sort((a,b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()).map((comment: Comment) => {
                         const isCurrentUser = comment.user_id === session.user.id;
-                        const userInitial = (comment.user_email || 'A')[0].toUpperCase();
+                        const userName = userNames.get(comment.user_id) || 'Unknown User';
+                        const userInitial = (userName || 'A')[0].toUpperCase();
                         return (
                             <div key={comment.id} className={`flex gap-3 ${isCurrentUser ? 'justify-end' : ''}`}>
                                 {!isCurrentUser && (
@@ -51,7 +53,7 @@ export const NotificationDetail: React.FC<NotificationDetailProps> = ({ notifica
                                 )}
                                 <div className={`max-w-[85%]`}>
                                     <div className={`flex items-baseline gap-2 ${isCurrentUser ? 'justify-end' : ''}`}>
-                                        <p className="font-semibold text-sm">{isCurrentUser ? 'You' : (comment.user_email || 'Admin')}</p>
+                                        <p className="font-semibold text-sm">{isCurrentUser ? 'You' : userName}</p>
                                         <p className="text-xs text-muted-foreground">{new Date(comment.created_at).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'})}</p>
                                     </div>
                                     <div className={`text-sm text-foreground rounded-lg p-2 mt-1 ${isCurrentUser ? 'bg-primary text-primary-foreground' : 'bg-secondary'}`}>

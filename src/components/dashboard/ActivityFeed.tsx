@@ -1,6 +1,7 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useEffect, useState } from 'react';
 import { Notification, Comment } from '../../types';
 import { Icon } from '../ui/Icon';
+import { supabase } from '../../lib/supabaseClient';
 
 interface ActivityFeedProps {
     notifications: Notification[];
@@ -12,16 +13,16 @@ type ActivityItem = {
     timestamp: string;
     notificationTitle: string;
     text: string;
-    userEmail: string;
+    userName: string;
 }
 
 const getActionFromComment = (comment: Comment): { action: string, text: string } => {
-    const statusChangeRegex = /Status changed to (new|acknowledged|resolved|Re-opened)\./i;
+    const statusChangeRegex = /Status changed to (new|acknowledged|resolved|Re-opened)\\./i;
     const match = comment.text.match(statusChangeRegex);
     if (match) {
         return { action: match[1], text: comment.text };
     }
-    return { action: 'Comment', text: `Commented: "${comment.text}"`};
+    return { action: 'Comment', text: `Commented: \"${comment.text}\"`};
 }
 
 const getActionStyling = (action: string) => {
@@ -61,6 +62,40 @@ const groupActivitiesByDate = (activities: ActivityItem[]) => {
 };
 
 export const ActivityFeed: React.FC<ActivityFeedProps> = ({ notifications }) => {
+    const [userNames, setUserNames] = useState<Map<string, string>>(new Map());
+
+    useEffect(() => {
+        const fetchUserNames = async () => {
+            const userIds = new Set<string>();
+            notifications.forEach(n => {
+                (n.comments || []).forEach(c => {
+                    if (c.user_id) {
+                        userIds.add(c.user_id);
+                    }
+                });
+            });
+
+            if (userIds.size > 0) {
+                const { data, error } = await supabase
+                    .from('profiles')
+                    .select('id, full_name')
+                    .in('id', Array.from(userIds));
+
+                if (error) {
+                    console.error('Error fetching user names:', error);
+                } else {
+                    const names = new Map<string, string>();
+                    data.forEach(profile => {
+                        names.set(profile.id, profile.full_name || 'Unknown User');
+                    });
+                    setUserNames(names);
+                }
+            }
+        };
+
+        fetchUserNames();
+    }, [notifications]);
+    
     const activityStream = useMemo(() => {
         const stream: ActivityItem[] = [];
         
@@ -70,8 +105,8 @@ export const ActivityFeed: React.FC<ActivityFeedProps> = ({ notifications }) => 
                 type: 'creation',
                 timestamp: n.created_at,
                 notificationTitle: n.title,
-                text: `Alert created: "${n.title}"`,
-                userEmail: 'System'
+                text: `Alert created: \"${n.title}\"`,
+                userName: 'System'
             });
 
             (n.comments || []).forEach((c: Comment) => {
@@ -81,13 +116,13 @@ export const ActivityFeed: React.FC<ActivityFeedProps> = ({ notifications }) => 
                     timestamp: c.created_at,
                     notificationTitle: n.title,
                     text: getActionFromComment(c).text,
-                    userEmail: c.user_email || 'Unknown User'
+                    userName: userNames.get(c.user_id) || 'Unknown User'
                 });
             });
         });
         
         return stream.sort((a,b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-    }, [notifications]);
+    }, [notifications, userNames]);
     
     const groupedActivities = useMemo(() => groupActivitiesByDate(activityStream), [activityStream]);
 
@@ -116,7 +151,7 @@ export const ActivityFeed: React.FC<ActivityFeedProps> = ({ notifications }) => 
                                     </div>
                                     <div className={`flex-1 p-3 rounded-md border-l-4 ${styling.border}`}>
                                         <p className="text-sm text-foreground">{item.text}</p>
-                                        <p className="text-xs text-muted-foreground pt-1">{new Date(item.timestamp).toLocaleTimeString()} by {item.userEmail}</p>
+                                        <p className="text-xs text-muted-foreground pt-1">{new Date(item.timestamp).toLocaleTimeString()} by {item.userName}</p>
                                     </div>
                                 </li>
                                 )

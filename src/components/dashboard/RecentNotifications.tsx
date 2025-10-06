@@ -28,6 +28,40 @@ export const RecentNotifications: React.FC<RecentNotificationsProps> = ({
     const [infoModalNotification, setInfoModalNotification] = useState<Notification | null>(null);
     const [subscribers, setSubscribers] = useState<User[]>([]);
     const [loadingSubscribers, setLoadingSubscribers] = useState(false);
+    const [userNames, setUserNames] = useState<Map<string, string>>(new Map());
+
+    useEffect(() => {
+        const fetchUserNames = async () => {
+            const userIds = new Set<string>();
+            notifications.forEach(n => {
+                (n.comments || []).forEach(c => {
+                    if (c.user_id) {
+                        userIds.add(c.user_id);
+                    }
+                });
+            });
+
+            if (userIds.size > 0) {
+                const { data, error } = await supabase
+                    .from('profiles')
+                    .select('id, full_name')
+                    .in('id', Array.from(userIds));
+
+                if (error) {
+                    console.error('Error fetching user names:', error);
+                } else {
+                    const names = new Map<string, string>();
+                    data.forEach(profile => {
+                        names.set(profile.id, profile.full_name || 'Unknown User');
+                    });
+                    setUserNames(names);
+                }
+            }
+        };
+
+        fetchUserNames();
+    }, [notifications]);
+
     
     useEffect(() => {
         const fetchSubscribers = async () => {
@@ -229,11 +263,14 @@ export const RecentNotifications: React.FC<RecentNotificationsProps> = ({
                                             </div>
                                         </div>
                                         <div className="flex items-center gap-2">
-                                             <p className="text-xs text-muted-foreground flex-shrink-0">{new Date(n.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</p>
+                                             <p className="text-xs text-muted-foreground flex-shrink-0">{new Date(n.timestamp).toLocaleString([], {
+                    dateStyle: 'short',
+                    timeStyle: 'short',
+                  })}</p>
                                             
                                             <div className="flex gap-1">
                                                 {n.status === 'new' && !isProcessing && (
-                                                    <>
+                                                    
                                                         <button
                                                             onClick={(e) => handleQuickAcknowledge(e, n)}
                                                             className="p-1.5 rounded-full text-muted-foreground hover:bg-yellow-100 hover:text-yellow-600 dark:hover:bg-yellow-900/30 dark:hover:text-yellow-400 transition-colors"
@@ -242,15 +279,8 @@ export const RecentNotifications: React.FC<RecentNotificationsProps> = ({
                                                         >
                                                             <Icon name="check" className="w-4 h-4" />
                                                         </button>
-                                                        <button
-                                                            onClick={(e) => handleQuickResolve(e, n)}
-                                                            className="p-1.5 rounded-full text-muted-foreground hover:bg-green-100 hover:text-green-600 dark:hover:bg-green-900/30 dark:hover:text-green-400 transition-colors"
-                                                            title="Quick Resolve"
-                                                            disabled={isProcessing}
-                                                        >
-                                                            <Icon name="check-check" className="w-4 h-4" />
-                                                        </button>
-                                                    </>
+                                                       
+                                                   
                                                 )}
                                                 {n.status === 'acknowledged' && !isProcessing && (
                                                     <button
@@ -278,6 +308,7 @@ export const RecentNotifications: React.FC<RecentNotificationsProps> = ({
                                         onUpdateNotification={onUpdateNotification}
                                         onAddComment={onAddComment}
                                         session={session}
+                                        userNames={userNames}
                                     />
                                 )}
                             </div>

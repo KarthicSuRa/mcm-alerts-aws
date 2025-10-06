@@ -474,7 +474,6 @@ export interface Comment {
   created_at: string;
   notification_id: string;
   user_id: string;
-  user_email: string;
 }
 
 export interface Notification {
