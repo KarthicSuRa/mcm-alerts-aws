@@ -33,7 +33,6 @@ type TopicFromDB = Database['public']['Tables']['topics']['Row'];
 type SubscriptionFromDB = Database['public']['Tables']['topic_subscriptions']['Row'];
 type Team = Database['public']['Tables']['teams']['Row'];
 
-
 interface Profile {
   id: string;
   username?: string;
@@ -98,6 +97,7 @@ function App() {
   const removeToast = useCallback((id: string) => {
     setToasts(prev => prev.filter(t => t.id !== id));
   }, []);
+
   useServiceWorker();
 
   useEffect(() => {
@@ -106,6 +106,7 @@ function App() {
       setToastHandler(() => {});
     };
   }, [addToast]);
+
   const systemStatus: SystemStatusData = useMemo(() => ({
     status: 'operational',
     message: 'All systems normal',
@@ -688,13 +689,11 @@ function App() {
       return;
     }
 
-    // This flag prevents re-initialization within the same session
     if (oneSignalInitialized.current) {
-        return;
+      return;
     }
 
     const initOneSignal = async () => {
-      // Use a single flag to prevent re-entry.
       if (initializationInProgress.current) return;
 
       try {
@@ -702,41 +701,37 @@ function App() {
         setIsPushLoading(true);
         console.log('🔔 Initializing OneSignal...');
 
-        // Step 1: Initialize the SDK.
+        // Enable verbose logging for debugging
+        window.OneSignal.setLogLevel(4);
+
+        // Initialize SDK and clean stale data
         await oneSignalService.initialize();
         console.log('🔔 SDK Initialized. Clearing any existing user identity...');
         
-        // Step 2: Force logout to clear any stale identity from the device.
-        // This is crucial to prevent identity conflicts when switching users.
+        await oneSignalService.cleanStalePlayerIds(session.user.id);
         await oneSignalService.logout();
         console.log('🔔 Identity cleared. Logging in new user...');
 
-        // Step 3: Log in the new user with retries to handle backend race conditions.
+        // Login with retries for 409 conflicts
         let loginAttempts = 0;
         const maxLoginAttempts = 3;
         while (loginAttempts < maxLoginAttempts) {
           try {
             await oneSignalService.login(session.user.id);
             console.log(`✅ OneSignal login successful for user: ${session.user.id}`);
-            break; // Success, exit loop
+            break;
           } catch (error: any) {
-            // Check if the error is a 409 conflict
             if (error?.status === 409 || (typeof error?.message === 'string' && error.message.includes('409'))) {
               loginAttempts++;
-              if (loginAttempts >= maxLoginAttempts) {
-                console.error(`❌ OneSignal login failed after ${maxLoginAttempts} attempts due to persistent 409 conflict.`);
-                throw error; // Rethrow after final attempt
-              }
               console.warn(`⚠️ OneSignal login conflict (409). Retrying attempt ${loginAttempts}/${maxLoginAttempts}...`);
-              await new Promise(resolve => setTimeout(resolve, 1500 * loginAttempts)); // Exponential backoff
+              await new Promise(resolve => setTimeout(resolve, 1500 * loginAttempts));
             } else {
-              // It's a different error, so we should fail fast.
               throw error;
             }
           }
         }
 
-        // Step 4: Set up listeners and update UI state.
+        // Check subscription status and set up listeners
         const isSubscribed = await oneSignalService.isSubscribed();
         console.log('🔔 OneSignal subscription status on load:', isSubscribed);
         setIsPushEnabled(isSubscribed);
@@ -760,7 +755,6 @@ function App() {
     };
 
     initOneSignal();
-
   }, [session, authLoading, oneSignalService, handleNewNotification]);
 
   const updateNotification = useCallback(async (notificationId: string, updates: NotificationUpdatePayload) => {
@@ -1129,9 +1123,26 @@ function App() {
     const operationPromise = (async () => {
       console.log('🔔 Starting push subscription process...');
       
-      const playerId = await oneSignalService.subscribe();
+      let attempts = 0;
+      const maxAttempts = 3;
+      let playerId: string | null = null;
+      while (attempts < maxAttempts) {
+        try {
+          playerId = await oneSignalService.subscribe();
+          if (playerId) break;
+          attempts++;
+          console.warn(`⚠️ Subscription attempt ${attempts}/${maxAttempts} failed. Retrying...`);
+          await new Promise(resolve => setTimeout(resolve, 2000));
+        } catch (error) {
+          attempts++;
+          console.error(`❌ Subscription attempt ${attempts}/${maxAttempts} failed:`, error);
+          if (attempts === maxAttempts) throw error;
+          await new Promise(resolve => setTimeout(resolve, 2000));
+        }
+      }
+
       if (!playerId) {
-        throw new Error('Failed to get player ID from OneSignal. The service might be temporarily unavailable.');
+        throw new Error('Failed to get player ID from OneSignal after multiple attempts.');
       }
       
       console.log('🔔 OneSignal subscription successful, player ID:', playerId);
@@ -1199,7 +1210,7 @@ function App() {
       if (error instanceof Error) {
         if (error.message.includes('permission')) {
           errorMessage += 'Please check your browser settings and allow notifications for this site.';
-        } else if (error.message.includes('player ID')) {
+        } else if (error.message.includes('player ID') || error.message.includes('multiple attempts')) {
           errorMessage += 'Could not register this device with the push service. Please try again.';
         } else if (error.message.includes('not supported')) {
           errorMessage += 'Your browser does not support push notifications.';
@@ -1219,7 +1230,6 @@ function App() {
       } as ExtendedNotification);
       
       setIsPushEnabled(false);
-
     } finally {
       setIsPushLoading(false);
       oneSignalOperationInProgress.current = false;
