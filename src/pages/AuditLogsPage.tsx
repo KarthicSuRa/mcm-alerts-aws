@@ -13,9 +13,10 @@ interface AuditLogsPageProps {
   openSettings: () => void;
   systemStatus: SystemStatusData;
   session: Session;
+  userNames: Map<string, string>;
 }
 
-function generateAuditLogs(notifications: Notification[]): AuditLog[] {
+function generateAuditLogs(notifications: Notification[], userNames: Map<string, string>): AuditLog[] {
     const logs: AuditLog[] = [];
 
     notifications.forEach(n => {
@@ -34,7 +35,7 @@ function generateAuditLogs(notifications: Notification[]): AuditLog[] {
              logs.push({
                 id: `log-comment-${c.id}`,
                 timestamp: c.created_at,
-                user: c.user_email || 'Unknown User',
+                user: userNames.get(c.user_id) || 'Unknown User',
                 action: stylingAction,
                 details: stylingAction === 'Commented' ? `Commented: "${c.text}"` : c.text,
                 notificationId: n.id,
@@ -55,12 +56,12 @@ const getActionStyling = (action: string): { icon: string; color: string } => {
     }
 }
 
-export const AuditLogsPage: React.FC<AuditLogsPageProps> = ({ notifications, onNavigate, onLogout, isSidebarOpen, setIsSidebarOpen, openSettings, systemStatus, session }) => {
+export const AuditLogsPage: React.FC<AuditLogsPageProps> = ({ notifications, onNavigate, onLogout, isSidebarOpen, setIsSidebarOpen, openSettings, systemStatus, session, userNames }) => {
     const [searchTerm, setSearchTerm] = useState('');
     const [timeFilter, setTimeFilter] = useState('all');
 
     const filteredLogs = useMemo(() => {
-        let logs = generateAuditLogs(notifications);
+        let logs = generateAuditLogs(notifications, userNames);
 
         if (timeFilter !== 'all') {
             const now = new Date();
@@ -83,7 +84,7 @@ export const AuditLogsPage: React.FC<AuditLogsPageProps> = ({ notifications, onN
         }
 
         return logs;
-    }, [notifications, searchTerm, timeFilter]);
+    }, [notifications, searchTerm, timeFilter, userNames]);
 
     const getNotificationById = (id: string) => notifications.find(n => n.id === id);
 

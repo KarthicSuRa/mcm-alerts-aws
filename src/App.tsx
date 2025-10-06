@@ -65,6 +65,7 @@ function App() {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [profileLoading, setProfileLoading] = useState(true);
   const [profileError, setProfileError] = useState<string | null>(null);
+  const [userNames, setUserNames] = useState<Map<string, string>>(new Map());
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -155,10 +156,7 @@ function App() {
           const comments = commentsByNotificationId.get(n.id) || [];
           return {
             ...n,
-            comments: comments.map((c: CommentFromDB) => ({
-              ...c,
-              user_email: c.user_id === session.user.id ? (session.user.email ?? 'Current User') : 'Another User'
-            }))
+            comments: comments.map((c: CommentFromDB) => ({ ...c }))
           };
         });
         
@@ -314,11 +312,20 @@ function App() {
     }, async (payload) => {
       console.log('💬 New comment received via realtime:', payload.new);
       const newCommentPayload = payload.new;
-      const newComment = {
-        ...newCommentPayload,
-        user_email: newCommentPayload.user_id === session.user.id ?
-          (session.user.email ?? 'Current User') : 'Another User'
-      } as Comment;
+      const newComment = { ...newCommentPayload } as Comment;
+
+      // Fetch user name if not already in map
+      if (newComment.user_id && !userNames.has(newComment.user_id)) {
+          console.log(`Fetching new user name for ${newComment.user_id}`);
+          const { data: profileData, error: profileError } = await supabase
+              .from('profiles')
+              .select('full_name')
+              .eq('id', newComment.user_id)
+              .single();
+          if (profileData) {
+              setUserNames(prev => new Map(prev).set(newComment.user_id, profileData.full_name || 'Unknown User'));
+          }
+      }
 
       setNotifications(prev => {
         const notification = prev.find(n => n.id === newComment.notification_id);
@@ -935,10 +942,7 @@ function App() {
             const comments = commentsByNotificationId.get(n.id) || [];
             return {
               ...n,
-              comments: comments.map((c: CommentFromDB) => ({
-                ...c,
-                user_email: c.user_id === session.user.id ? (session.user.email ?? 'Current User') : 'Another User'
-              }))
+              comments: comments.map((c: CommentFromDB) => ({ ...c }))
             };
           });
           
@@ -1109,6 +1113,39 @@ function App() {
       supabase.removeChannel(sitesSubscription);
     };
   }, [session]);
+  useEffect(() => {
+    const fetchUserNames = async () => {
+        const userIds = new Set<string>();
+        notifications.forEach(n => {
+            (n.comments || []).forEach(c => {
+                if (c.user_id) {
+                    userIds.add(c.user_id);
+                }
+            });
+        });
+
+        if (userIds.size > 0) {
+            const { data, error } = await supabase
+                .from('profiles')
+                .select('id, full_name')
+                .in('id', Array.from(userIds));
+
+            if (error) {
+                console.error('Error fetching user names:', error);
+            } else {
+                const names = new Map<string, string>();
+                data.forEach(profile => {
+                    names.set(profile.id, profile.full_name || 'Unknown User');
+                });
+                setUserNames(names);
+            }
+        }
+    };
+
+    if (notifications.length > 0) {
+        fetchUserNames();
+    }
+  }, [notifications]);
   const subscribeToPush = useCallback(async () => {
     if (!session) return;
     setIsPushLoading(true);
@@ -1562,6 +1599,7 @@ function App() {
                     openSettings={() => setIsSettingsOpen(true)} 
                     systemStatus={systemStatus} 
                     session={session} 
+                    userNames={userNames}
                   /> 
                 } />
                 <Route path="/how-it-works" element={ 
