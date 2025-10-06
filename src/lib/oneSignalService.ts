@@ -32,11 +32,16 @@ export class OneSignalService {
 
     private async waitForOneSignal(): Promise<void> {
         if (window.OneSignal) {
+            console.log('✅ OneSignal SDK detected');
             return;
         }
+        console.log('🔔 Waiting for OneSignal SDK to load...');
         await new Promise<void>(resolve => {
             window.OneSignalDeferred = window.OneSignalDeferred || [];
-            window.OneSignalDeferred.push(() => resolve());
+            window.OneSignalDeferred.push(() => {
+                console.log('✅ OneSignal SDK loaded via deferred push');
+                resolve()
+            });
         });
     }
 
@@ -48,10 +53,16 @@ export class OneSignalService {
 
         try {
             await this.waitForOneSignal();
+            
+            if (window.OneSignal.Debug) {
+                window.OneSignal.Debug.setLogLevel('trace');
+                console.log('✅ Set OneSignal debug level to trace');
+            }
+
             await window.OneSignal.init({ 
                 appId: this.appId,
                 allowLocalhostAsSecureOrigin: true,
-                serviceWorkerPath: 'https://cdn.onesignal.com/sdks/web/v16/OneSignalSDKWorker.js',
+                serviceWorkerPath: 'OneSignalSDKWorker.js',
                 serviceWorkerParam: { scope: '/' }
             });
 
@@ -83,9 +94,8 @@ export class OneSignalService {
             }
 
             if (currentUserId) {
-                // Clear all tags and subscriptions
                 const tags = await window.OneSignal.User.getTags();
-                if (tags) {
+                if (tags && Object.keys(tags).length > 0) {
                     await window.OneSignal.User.removeTags(Object.keys(tags));
                     console.log('🔔 Cleared all existing tags.');
                 }
@@ -138,7 +148,6 @@ export class OneSignalService {
     public async subscribe(): Promise<string | null> {
         await this.initialize();
         
-        // Check if browser supports push notifications
         if (!('PushManager' in window)) {
             console.error('❌ Browser does not support push notifications. Browser:', navigator.userAgent);
             return null;
@@ -153,7 +162,6 @@ export class OneSignalService {
         }
         console.log('👍 Permission granted.');
 
-        // Attempt to opt in to trigger subscription creation
         let optInAttempts = 0;
         const maxOptInAttempts = 3;
         while (optInAttempts < maxOptInAttempts) {
@@ -172,13 +180,11 @@ export class OneSignalService {
             }
         }
 
-        // Wait for pushSubscription to be available
         let attempts = 0;
         const maxAttempts = 15;
         const delay = 1000;
-        while (!window.OneSignal.User.pushSubscription && attempts < maxAttempts) {
+        while (!window.OneSignal.User.pushSubscription?.id && attempts < maxAttempts) {
             console.log(`🔔 Waiting for pushSubscription to be available... Attempt ${attempts + 1}`);
-            // Check native PushManager subscription
             const registration = await navigator.serviceWorker.ready;
             const subscription = await registration.pushManager.getSubscription();
             console.log('🔔 Native PushManager subscription state:', subscription);
@@ -186,14 +192,9 @@ export class OneSignalService {
             attempts++;
         }
 
-        if (!window.OneSignal.User.pushSubscription) {
-            console.error('❌ Push subscription is still undefined after waiting. Browser:', navigator.userAgent);
-            return null;
-        }
-
-        const token = window.OneSignal.User.pushSubscription.id;
+        const token = window.OneSignal.User.pushSubscription?.id;
         if (!token) {
-            console.error('❌ Could not get a push subscription token after permission grant. Subscription state:', window.OneSignal.User.pushSubscription);
+            console.error('❌ Push subscription token is still undefined after waiting. Browser:', navigator.userAgent);
             return null;
         }
 
@@ -218,7 +219,7 @@ export class OneSignalService {
 
     public async unsubscribe(): Promise<void> {
         await this.initialize();
-        if (window.OneSignal.User.pushSubscription && window.OneSignal.User.pushSubscription.optedIn) {
+        if (window.OneSignal.User.pushSubscription?.optedIn) {
             await window.OneSignal.User.pushSubscription.optOut();
             console.log('✅ Opted out of push notifications.');
         }
@@ -226,18 +227,12 @@ export class OneSignalService {
 
     public async isSubscribed(): Promise<boolean> {
         await this.initialize();
-        if (!window.OneSignal.User.pushSubscription) {
-            return false;
-        }
-        return window.OneSignal.User.pushSubscription.optedIn;
+        return window.OneSignal.User.pushSubscription?.optedIn === true;
     }
 
     public async getPlayerId(): Promise<string | null> {
         await this.initialize();
-        if (!window.OneSignal.User.pushSubscription) {
-            return null;
-        }
-        return window.OneSignal.User.pushSubscription.id;
+        return window.OneSignal.User.pushSubscription?.id || null;
     }
 
     public async savePlayerIdToDatabase(userId: string): Promise<void> {
@@ -305,9 +300,8 @@ export class OneSignalService {
                     console.log('✅ Cleaned stale player IDs from Supabase for user:', userId);
                 }
 
-                // Check OneSignal backend for stale subscriptions
                 const tags = await window.OneSignal.User.getTags();
-                if (tags) {
+                if (tags && Object.keys(tags).length > 0) {
                     await window.OneSignal.User.removeTags(Object.keys(tags));
                     console.log('✅ Cleared stale tags from OneSignal for user:', userId);
                 }
@@ -336,7 +330,9 @@ export class OneSignalService {
             handler(event.notification);
         };
         
-        window.OneSignal.Notifications.addEventListener("foregroundWillDisplay", onNotificationDisplay);
+        this.waitForOneSignal().then(() => {
+            window.OneSignal.Notifications.addEventListener("foregroundWillDisplay", onNotificationDisplay);
+        });
     }
     
     public async setUserTags(tags: { [key: string]: string }): Promise<void> {
