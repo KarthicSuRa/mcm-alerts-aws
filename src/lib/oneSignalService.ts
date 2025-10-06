@@ -111,7 +111,6 @@ export class OneSignalService {
               await OneSignal.init({
                 appId: this.appId,
                 allowLocalhostAsSecureOrigin: true,
-                serviceWorkerPath: 'sw.js',
                 notifyButton: { enable: false },
                 persistNotification: true,
                 autoRegister: false, // We will register manually.
@@ -142,7 +141,6 @@ export class OneSignalService {
         await window.OneSignal.init({
           appId: this.appId,
           allowLocalhostAsSecureOrigin: true,
-          serviceWorkerPath: 'sw.js',
           notifyButton: { enable: false },
           persistNotification: true,
           autoRegister: false, // We will register manually.
