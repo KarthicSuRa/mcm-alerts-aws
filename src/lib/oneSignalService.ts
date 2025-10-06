@@ -51,6 +51,8 @@ export class OneSignalService {
             await window.OneSignal.init({ 
                 appId: this.appId,
                 allowLocalhostAsSecureOrigin: true,
+                serviceWorkerPath: '/OneSignalSDKWorker.js',
+                serviceWorkerParam: { scope: '/' }
             });
             this.initialized = true;
             console.log('✅ OneSignal SDK Initialized');
@@ -64,11 +66,18 @@ export class OneSignalService {
     public async login(userId: string): Promise<void> {
         await this.initialize();
         try {
+            const currentUserId = window.OneSignal.User.onesignalId;
+            if (currentUserId === userId) {
+                console.log(`🔔 Already logged in with user ID: ${userId}`);
+                return;
+            }
+
+            await this.logout();
             await window.OneSignal.login(userId);
             console.log(`✅ Logged in to OneSignal with external user ID: ${userId}`);
         } catch (error) {
             console.error('❌ Error logging in to OneSignal:', error);
-            throw error; 
+            throw error;
         }
     }
 
@@ -86,16 +95,28 @@ export class OneSignalService {
         await this.initialize();
         
         console.log("🔔 Requesting browser permission for notifications...");
-        await window.OneSignal.Notifications.requestPermission();
+        const permission = await window.OneSignal.Notifications.requestPermission();
         
-        const hasPermission = window.OneSignal.Notifications.permission;
-        if (!hasPermission) {
+        if (!permission) {
             console.warn('✋ Browser permission for notifications was denied.');
             return null;
         }
         console.log('👍 Permission granted.');
 
-        // After permission is granted, the pushSubscription object and its ID will be available.
+        let attempts = 0;
+        const maxAttempts = 10;
+        const delay = 500;
+        while (!window.OneSignal.User.pushSubscription && attempts < maxAttempts) {
+            console.log(`🔔 Waiting for pushSubscription to be available... Attempt ${attempts + 1}`);
+            await new Promise(resolve => setTimeout(resolve, delay));
+            attempts++;
+        }
+
+        if (!window.OneSignal.User.pushSubscription) {
+            console.error('❌ Push subscription is still undefined after waiting.');
+            return null;
+        }
+
         const token = window.OneSignal.User.pushSubscription.id;
         if (!token) {
             console.error('❌ Could not get a push subscription token after permission grant.');
@@ -104,6 +125,21 @@ export class OneSignalService {
 
         console.log(`✅ Successfully subscribed with push token: ${token}`);
         return token;
+    }
+
+    public async checkAndPromptSubscription(): Promise<void> {
+        const isSubscribed = await this.isSubscribed();
+        if (!isSubscribed) {
+            console.log('🔔 User is not subscribed to push notifications. Prompting...');
+            const token = await this.subscribe();
+            if (token) {
+                console.log('✅ User subscribed successfully.');
+            } else {
+                console.warn('❌ User did not subscribe to push notifications.');
+            }
+        } else {
+            console.log('✅ User is already subscribed to push notifications.');
+        }
     }
 
     public async unsubscribe(): Promise<void> {
@@ -127,7 +163,6 @@ export class OneSignalService {
         if (!window.OneSignal.User.pushSubscription) {
             return null;
         }
-        // The Push Subscription ID is the modern equivalent of the Player ID.
         return window.OneSignal.User.pushSubscription.id;
     }
 
@@ -139,14 +174,31 @@ export class OneSignalService {
             return;
         }
 
-        const { error } = await supabase
-            .from('onesignal_players')
-            .upsert({ user_id: userId, player_id: playerId, updated_at: new Date().toISOString() }, { onConflict: 'user_id' });
+        let attempts = 0;
+        const maxAttempts = 3;
+        while (attempts < maxAttempts) {
+            try {
+                const { error } = await supabase
+                    .from('onesignal_players')
+                    .upsert(
+                        { user_id: userId, player_id: playerId, updated_at: new Date().toISOString() },
+                        { onConflict: 'user_id' }
+                    );
 
-        if (error) {
-            console.error('Error saving player ID to database:', error);
-        } else {
-            console.log('Player ID saved to database successfully.');
+                if (error) {
+                    throw error;
+                }
+                console.log('Player ID saved to database successfully.');
+                return;
+            } catch (error) {
+                console.error(`Error saving player ID to database (attempt ${attempts + 1}):`, error);
+                attempts++;
+                if (attempts === maxAttempts) {
+                    console.error('Max attempts reached. Could not save player ID to database.');
+                    return;
+                }
+                await new Promise(resolve => setTimeout(resolve, 1000));
+            }
         }
     }
 
