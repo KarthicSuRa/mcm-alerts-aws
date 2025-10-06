@@ -86,10 +86,8 @@ export class OneSignalService {
         await this.initialize();
         
         console.log("🔔 Requesting browser permission for notifications...");
-        // Step 1: Request the native browser permission. This is the main subscription action.
         await window.OneSignal.Notifications.requestPermission();
         
-        // Step 2: Check if permission was actually granted.
         const hasPermission = window.OneSignal.Notifications.permission;
         if (!hasPermission) {
             console.warn('✋ Browser permission for notifications was denied.');
@@ -97,8 +95,8 @@ export class OneSignalService {
         }
         console.log('👍 Permission granted.');
 
-        // Step 3: Retrieve the subscription token. After permission is granted, a token should be available.
-        const token = await window.OneSignal.User.getPushSubscriptionId();
+        // After permission is granted, the pushSubscription object and its ID will be available.
+        const token = window.OneSignal.User.pushSubscription.id;
         if (!token) {
             console.error('❌ Could not get a push subscription token after permission grant.');
             return null;
@@ -110,7 +108,6 @@ export class OneSignalService {
 
     public async unsubscribe(): Promise<void> {
         await this.initialize();
-        // Defensively check if the user is actually subscribed before trying to opt out.
         if (window.OneSignal.User.pushSubscription && window.OneSignal.User.pushSubscription.optedIn) {
             await window.OneSignal.User.pushSubscription.optOut();
             console.log('✅ Opted out of push notifications.');
@@ -119,7 +116,6 @@ export class OneSignalService {
 
     public async isSubscribed(): Promise<boolean> {
         await this.initialize();
-        // If the pushSubscription object doesn't exist, the user cannot be subscribed.
         if (!window.OneSignal.User.pushSubscription) {
             return false;
         }
@@ -128,8 +124,11 @@ export class OneSignalService {
 
     public async getPlayerId(): Promise<string | null> {
         await this.initialize();
+        if (!window.OneSignal.User.pushSubscription) {
+            return null;
+        }
         // The Push Subscription ID is the modern equivalent of the Player ID.
-        return window.OneSignal.User.getPushSubscriptionId();
+        return window.OneSignal.User.pushSubscription.id;
     }
 
     public async savePlayerIdToDatabase(userId: string): Promise<void> {
@@ -164,13 +163,11 @@ export class OneSignalService {
     
     public onSubscriptionChange(callback: (isSubscribed: boolean) => void): void {
         const setupListener = () => {
-            // Use a try-catch block to handle the case where pushSubscription doesn't exist yet.
             try {
                 window.OneSignal.User.pushSubscription.addEventListener('change', (change: any) => {
                     callback(change.current.optedIn);
                 });
             } catch (e) {
-                // If the object doesn't exist yet, retry in a moment.
                 setTimeout(setupListener, 500);
             }
         };
