@@ -73,8 +73,8 @@ export class OneSignalService {
     }
 
     public async logout(): Promise<void> {
+        if (!this.initialized) return;
         try {
-            await this.initialize();
             await window.OneSignal.logout();
             console.log('✅ Logged out from OneSignal.');
         } catch (error) {
@@ -84,20 +84,12 @@ export class OneSignalService {
 
     public async subscribe(): Promise<string | null> {
         await this.initialize();
-        console.log("🔔 Triggering native browser prompt for push notifications...");
+        console.log("🔔 Opting in for push notifications...");
+        await window.OneSignal.User.pushSubscription.optIn();
         
-        await window.OneSignal.Notifications.requestPermission();
-        
-        const isPushEnabled = window.OneSignal.Notifications.permission;
-        if (!isPushEnabled) {
-            console.warn('✋ Push notification permission was not granted.');
-            return null;
-        }
-        
-        console.log('👍 Permission granted. Subscribing for a new push token...');
         const token = await window.OneSignal.User.getPushSubscriptionId();
         if (!token) {
-            console.error('❌ Could not get a push subscription token after permission grant.');
+            console.warn('✋ Push notification subscription token could not be retrieved after opt-in.');
             return null;
         }
 
@@ -107,20 +99,19 @@ export class OneSignalService {
 
     public async unsubscribe(): Promise<void> {
         await this.initialize();
-        const isEnabled = window.OneSignal.Notifications.permission;
-        if (isEnabled) {
-            await window.OneSignal.Notifications.disablePush();
-            console.log('✅ Disabled push notifications.');
-        }
+        console.log("🔕 Opting out of push notifications...");
+        await window.OneSignal.User.pushSubscription.optOut();
+        console.log('✅ Opted out of push notifications.');
     }
 
     public async isSubscribed(): Promise<boolean> {
         await this.initialize();
-        return window.OneSignal.Notifications.permission;
+        return window.OneSignal.User.pushSubscription.optedIn;
     }
 
     public async getPlayerId(): Promise<string | null> {
         await this.initialize();
+        // The Push Subscription ID is the modern equivalent of the Player ID
         return window.OneSignal.User.getPushSubscriptionId();
     }
 
@@ -155,8 +146,8 @@ export class OneSignalService {
     }
     
     public onSubscriptionChange(callback: (isSubscribed: boolean) => void): void {
-        window.OneSignal.Notifications.addEventListener('change', (event: any) => {
-            callback(event.permission);
+        window.OneSignal.User.pushSubscription.addEventListener('change', (change: any) => {
+            callback(change.current.optedIn);
         });
     }
 
