@@ -147,7 +147,7 @@ export class OneSignalService {
 
     public async subscribe(): Promise<string | null> {
         await this.initialize();
-        
+
         if (!('PushManager' in window)) {
             console.error('❌ Browser does not support push notifications. Browser:', navigator.userAgent);
             return null;
@@ -155,17 +155,36 @@ export class OneSignalService {
 
         console.log("🔔 Requesting browser permission for notifications...");
         const permission = await window.OneSignal.Notifications.requestPermission();
-        
+
         if (!permission) {
             console.warn('✋ Browser permission for notifications was denied.');
             return null;
         }
         console.log('👍 Permission granted.');
 
+        // Wait for the pushSubscription object to become available
+        let waitAttempts = 0;
+        const maxWaitAttempts = 10;
+        while (!window.OneSignal.User.pushSubscription && waitAttempts < maxWaitAttempts) {
+            console.log(`🔔 Waiting for pushSubscription object to be ready... Attempt ${waitAttempts + 1}`);
+            await new Promise(resolve => setTimeout(resolve, 500));
+            waitAttempts++;
+        }
+
+        if (!window.OneSignal.User.pushSubscription) {
+            console.error('❌ Push subscription object did not become available in time.');
+            return null;
+        }
+
+        // Attempt to opt in to trigger subscription creation
         let optInAttempts = 0;
         const maxOptInAttempts = 3;
         while (optInAttempts < maxOptInAttempts) {
             try {
+                if (window.OneSignal.User.pushSubscription.optedIn) {
+                    console.log('🔔 Already opted in to push notifications.');
+                    break;
+                }
                 await window.OneSignal.User.pushSubscription.optIn();
                 console.log('🔔 Triggered push subscription opt-in.');
                 break;
@@ -180,16 +199,13 @@ export class OneSignalService {
             }
         }
 
-        let attempts = 0;
-        const maxAttempts = 15;
-        const delay = 1000;
-        while (!window.OneSignal.User.pushSubscription?.id && attempts < maxAttempts) {
-            console.log(`🔔 Waiting for pushSubscription to be available... Attempt ${attempts + 1}`);
-            const registration = await navigator.serviceWorker.ready;
-            const subscription = await registration.pushManager.getSubscription();
-            console.log('🔔 Native PushManager subscription state:', subscription);
-            await new Promise(resolve => setTimeout(resolve, delay));
-            attempts++;
+        // Wait for the subscription ID (token) to be generated
+        let tokenIdAttempts = 0;
+        const maxTokenIdAttempts = 15;
+        while (!window.OneSignal.User.pushSubscription?.id && tokenIdAttempts < maxTokenIdAttempts) {
+            console.log(`🔔 Waiting for push subscription ID to be available... Attempt ${tokenIdAttempts + 1}`);
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            tokenIdAttempts++;
         }
 
         const token = window.OneSignal.User.pushSubscription?.id;
@@ -201,6 +217,7 @@ export class OneSignalService {
         console.log(`✅ Successfully subscribed with push token: ${token}`);
         return token;
     }
+
 
     public async checkAndPromptSubscription(): Promise<void> {
         const isSubscribed = await this.isSubscribed();
