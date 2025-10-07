@@ -8,25 +8,12 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      workbox: {
-        globPatterns: ['**/*.{js,css,html,ico,png,svg}'],
-        runtimeCaching: [
-          {
-            urlPattern: /^https:\/\/.*\.supabase\.co\/.*/i,
-            handler: 'NetworkFirst',
-            options: {
-              cacheName: 'supabase-cache',
-              expiration: {
-                maxEntries: 10,
-                maxAgeSeconds: 60 * 60 * 24 * 365, // 365 days
-              },
-              // Removed cacheKeyWillBeUsed as it's not a valid Workbox option
-              networkTimeoutSeconds: 10,
-            },
-          },
-        ],
+      strategies: 'injectManifest',
+      srcDir: 'public',
+      srcFile: 'sw.js',
+      injectManifest: {
+        globPatterns: ['**/*.{js,css,html,ico,png,svg,json,wav}'],
       },
-      includeAssets: ['favicon.ico', 'icons/*.png'],
       manifest: {
         name: 'MCM Alerts',
         short_name: 'MCM Alerts',
