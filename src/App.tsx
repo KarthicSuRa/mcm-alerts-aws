@@ -1,3 +1,4 @@
+
 /// <reference types="vite/client" />
 
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
@@ -31,17 +32,14 @@ type TopicFromDB = Database['public']['Tables']['topics']['Row'];
 type SubscriptionFromDB = Database['public']['Tables']['topic_subscriptions']['Row'];
 type Team = Database['public']['Tables']['teams']['Row'];
 
-// Extended notification type to include OneSignal ID
 interface ExtendedNotification extends Notification {
   oneSignalId?: string;
 }
 
-// It's good practice to define the shape of your profile object
 interface Profile {
   id: string;
   username?: string;
   avatar_url?: string;
-  // Add any other fields that are in your 'profiles' table
 }
 
 function App() {
@@ -72,14 +70,8 @@ function App() {
   const oneSignalService = OneSignalService.getInstance();
   const oneSignalInitialized = useRef(false);
   const dataFetched = useRef(false);
-  const isFetching = useRef(false); // Added to prevent concurrent fetches
   const realtimeSubscriptions = useRef<Map<string, any>>(new Map());
-  const initializationInProgress = useRef(false);
   const pendingUpdates = useRef<Map<string, NodeJS.Timeout>>(new Map());
-  const visibilityChangeHandler = useRef<(() => void) | null>(null);
-  const reconnectAttempts = useRef(0);
-  const maxReconnectAttempts = 5;
-  const lastActivity = useRef(Date.now());
 
   const currentPage = useMemo(() => {
     const path = location.pathname;
@@ -165,443 +157,12 @@ function App() {
         console.log('✅ Notifications force refreshed successfully:', transformedData.length);
         
         dataFetched.current = true;
-        
-        // After refresh, ensure realtime subscriptions are active
-        if (session && dataFetched.current) {
-          const hasActiveSubscriptions = Array.from(realtimeSubscriptions.current.values()).some(
-            channel => channel.state === 'joined' || channel.state === 'joining'
-          );
-          
-          if (!hasActiveSubscriptions) {
-            console.log('📱 No active subscriptions after refresh - reconnecting...');
-            setupRealtimeSubscriptions();
-          }
-        }
       }
     } catch (error) {
       console.error('Error in force refresh:', error);
       alert('Failed to refresh notifications. Please try again.');
     }
   }, [session]);
-
-  // Setup realtime subscriptions function
-  const setupRealtimeSubscriptions = useCallback(() => {
-    if (!session || !dataFetched.current) {
-      console.log('⏸️ Skipping realtime setup - not ready');
-      return;
-    }
-
-    console.log('🔗 Setting up realtime subscriptions...');
-
-    // Clean up existing subscriptions
-    realtimeSubscriptions.current.forEach(channel => {
-      try {
-        if (channel.state !== 'closed') {
-          channel.unsubscribe();
-        }
-      } catch (error) {
-        console.warn('⚠️ Error cleaning up old channel:', error);
-      }
-    });
-    realtimeSubscriptions.current.clear();
-
-    // Notifications channel
-    const notificationChannel = supabase
-      .channel('notifications-global', {
-        config: {
-          presence: { key: `user-${session.user.id}` }
-        }
-      })
-      .on<NotificationFromDB>('postgres_changes', { 
-        event: 'INSERT', 
-        schema: 'public', 
-        table: 'notifications' 
-      }, async (payload) => {
-        console.log('🔵 New notification received via realtime:', {
-          id: payload.new.id,
-          title: payload.new.title,
-          topic_id: payload.new.topic_id
-        });
-        
-        const newNotification = {...payload.new, comments: [] } as ExtendedNotification;
-        
-        setNotifications(prev => {
-          const exists = prev.some(n => 
-            n.id === newNotification.id || 
-            (n.oneSignalId && newNotification.oneSignalId && n.oneSignalId === newNotification.oneSignalId)
-          );
-          
-          if (exists) {
-            console.log('🔄 Notification already exists, skipping INSERT');
-            return prev;
-          }
-          console.log('➕ Adding new notification to list');
-          return [newNotification, ...prev];
-        });
-        
-        setTimeout(() => {
-          handleNewNotification(newNotification);
-        }, 200);
-      })
-      .on<NotificationFromDB>('postgres_changes', { 
-        event: 'UPDATE', 
-        schema: 'public', 
-        table: 'notifications' 
-      }, payload => {
-        console.log('🟡 Notification UPDATE received via realtime:', {
-          id: payload.new.id,
-          oldStatus: payload.old?.status,
-          newStatus: payload.new.status
-        });
-        
-        if (!pendingUpdates.current.has(payload.new.id)) {
-          setNotifications(prev => prev.map(n => {
-            if (n.id === payload.new.id) {
-              console.log('🟢 Applying realtime update to notification:', n.id);
-              return {
-                ...n,
-                ...payload.new,
-                comments: n.comments || [],
-                updated_at: payload.new.updated_at || new Date().toISOString()
-              } as ExtendedNotification;
-            }
-            return n;
-          }));
-        } else {
-          console.log('⏸️ Skipping realtime update - local update pending for:', payload.new.id);
-        }
-      })
-      .on('system', { event: '*' }, (payload) => {
-        console.log('📱 System event:', payload);
-        if (payload.event === 'phx_error' || payload.status === 'error') {
-          console.log('❌ Realtime connection error detected - will attempt reconnect');
-        }
-      })
-      .subscribe((status, err) => {
-        if (err) {
-          console.error('❌ Notification channel subscription error:', err);
-          reconnectAttempts.current = 0;
-        } else {
-          console.log('✅ Notification channel status:', status);
-          if (status === 'SUBSCRIBED') {
-            reconnectAttempts.current = 0;
-          }
-        }
-      });
-
-    realtimeSubscriptions.current.set('notifications', notificationChannel);
-
-    // Comments channel
-    const commentsChannel = supabase
-      .channel(`comments-${session.user.id}`, {
-        config: {
-          broadcast: { self: true },
-          presence: { key: session.user.id }
-        }
-      })
-      .on<CommentFromDB>('postgres_changes', {
-        event: 'INSERT',
-        schema: 'public',
-        table: 'comments'
-      }, async (payload) => {
-        console.log('💬 New comment received via realtime:', payload.new);
-        const newCommentPayload = payload.new;
-        const newComment = { ...newCommentPayload } as Comment;
-
-        if (newComment.user_id && !userNames.has(newComment.user_id)) {
-          console.log(`Fetching new user name for ${newComment.user_id}`);
-          const { data: profileData, error: profileError } = await supabase
-            .from('profiles')
-            .select('full_name')
-            .eq('id', newComment.user_id)
-            .single();
-          if (profileData) {
-            setUserNames(prev => new Map(prev).set(newComment.user_id, profileData.full_name || 'Unknown User'));
-          }
-        }
-
-        setNotifications(prev => {
-          const notification = prev.find(n => n.id === newComment.notification_id);
-          if (notification && notification.comments.some(c => c.id === newComment.id)) {
-            return prev;
-          }
-          
-          return prev.map(n =>
-            n.id === newComment.notification_id
-              ? {
-                ...n,
-                comments: [...(n.comments || []), newComment]
-                  .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
-              }
-              : n
-          );
-        });
-      })
-      .on('system', { event: '*' }, (payload) => {
-        if (payload.event === 'phx_error' || payload.status === 'error') {
-          console.log('❌ Comments channel error detected');
-        }
-      })
-      .subscribe((status, err) => {
-        if (err) {
-          console.error('❌ Comments channel subscription error:', err);
-        } else {
-          console.log('✅ Comments channel status:', status);
-        }
-      });
-
-    realtimeSubscriptions.current.set('comments', commentsChannel);
-
-    // Topics channel
-    const topicChannel = supabase
-      .channel(`topics-${session.user.id}`, {
-        config: {
-          broadcast: { self: false },
-          presence: { key: session.user.id }
-        }
-      })
-      .on<TopicFromDB>('postgres_changes', { 
-        event: 'INSERT', 
-        schema: 'public', 
-        table: 'topics' 
-      }, payload => {
-        console.log('📂 New topic received:', payload.new);
-        setTopics(prev => [...prev, {...payload.new, subscribed: false} as Topic]);
-      })
-      .on('system', { event: '*' }, (payload) => {
-        if (payload.event === 'phx_error' || payload.status === 'error') {
-          console.log('❌ Topics channel error detected');
-        }
-      })
-      .subscribe((status, err) => {
-        if (err) {
-          console.error('❌ Topics channel subscription error:', err);
-        } else {
-          console.log('✅ Topics channel status:', status);
-        }
-      });
-
-    realtimeSubscriptions.current.set('topics', topicChannel);
-
-    // Subscriptions channel
-    const subscriptionChannel = supabase
-      .channel(`subscriptions-${session.user.id}`, {
-        config: {
-          broadcast: { self: false },
-          presence: { key: session.user.id }
-        }
-      })
-      .on<SubscriptionFromDB>('postgres_changes', { 
-        event: '*', 
-        schema: 'public', 
-        table: 'topic_subscriptions', 
-        filter: `user_id=eq.${session.user.id}` 
-      }, (payload) => {
-        console.log('🔄 Subscription change:', payload);
-        
-        if (payload.eventType === 'INSERT') {
-          const newSub = payload.new as SubscriptionFromDB;
-          setTopics(prev => prev.map(t => 
-            t.id === newSub.topic_id ? {...t, subscribed: true, subscription_id: newSub.id} : t
-          ));
-        }
-        if (payload.eventType === 'DELETE') {
-          const oldSub = payload.old as Partial<SubscriptionFromDB>;
-          if (oldSub?.topic_id) {
-            setTopics(prev => prev.map(t => 
-              t.id === oldSub.topic_id ? {...t, subscribed: false, subscription_id: undefined} : t
-            ));
-          }
-        }
-      })
-      .on('system', { event: '*' }, (payload) => {
-        if (payload.event === 'phx_error' || payload.status === 'error') {
-          console.log('❌ Subscriptions channel error detected');
-        }
-      })
-      .subscribe((status, err) => {
-        if (err) {
-          console.error('❌ Subscriptions channel subscription error:', err);
-        } else {
-          console.log('✅ Subscriptions channel status:', status);
-        }
-      });
-
-    realtimeSubscriptions.current.set('subscriptions', subscriptionChannel);
-    
-    console.log('✅ All realtime subscriptions set up successfully');
-  }, [session]);
-
-  // Handle visibility changes and reconnection
-  useEffect(() => {
-    const handleVisibilityChange = () => {
-      lastActivity.current = Date.now();
-      
-      if (document.visibilityState === 'visible' && session) {
-        console.log('📱 App became visible - checking realtime connections...');
-        
-        setTimeout(() => {
-          if (session && dataFetched.current) {
-            const hasActiveSubscriptions = Array.from(realtimeSubscriptions.current.values()).some(
-              channel => channel.state === 'joined' || channel.state === 'joining'
-            );
-            
-            if (!hasActiveSubscriptions) {
-              console.log('📱 No active realtime subscriptions found - reconnecting...');
-              setupRealtimeSubscriptions();
-            }
-            
-            const timeSinceLastActivity = Date.now() - lastActivity.current;
-            if (timeSinceLastActivity > 30000) {
-              console.log('📱 App was inactive for a while - refreshing notifications...');
-              forceRefreshNotifications();
-            }
-          }
-        }, 1000);
-      } else if (document.visibilityState === 'hidden') {
-        console.log('📱 App became hidden - recording timestamp');
-        lastActivity.current = Date.now();
-      }
-    };
-
-    const handleFocus = () => {
-      console.log('📱 Window focused - ensuring realtime connections...');
-      lastActivity.current = Date.now();
-      
-      if (session && dataFetched.current) {
-        setTimeout(() => {
-          const hasActiveSubscriptions = Array.from(realtimeSubscriptions.current.values()).some(
-            channel => channel.state === 'joined' || channel.state === 'joining'
-          );
-          
-          if (!hasActiveSubscriptions) {
-            console.log('📱 Reconnecting realtime subscriptions on focus...');
-            setupRealtimeSubscriptions();
-          }
-        }, 500);
-      }
-    };
-
-    const handleOnline = () => {
-      console.log('📱 Network connection restored - reconnecting...');
-      if (session && dataFetched.current) {
-        setTimeout(() => {
-          setupRealtimeSubscriptions();
-          forceRefreshNotifications();
-        }, 1000);
-      }
-    };
-
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    window.addEventListener('focus', handleFocus);
-    window.addEventListener('online', handleOnline);
-    
-    visibilityChangeHandler.current = handleVisibilityChange;
-
-    return () => {
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-      window.removeEventListener('focus', handleFocus);
-      window.removeEventListener('online', handleOnline);
-      visibilityChangeHandler.current = null;
-    };
-  }, [session, forceRefreshNotifications, setupRealtimeSubscriptions]);
-
-  // Periodic connection health check
-  useEffect(() => {
-    if (!session || !dataFetched.current) return;
-
-    const healthCheckInterval = setInterval(() => {
-      if (document.visibilityState === 'visible') {
-        const activeChannels = Array.from(realtimeSubscriptions.current.values()).filter(
-          channel => channel.state === 'joined'
-        );
-        
-        console.log(`🔍 Health check: ${activeChannels.length}/${realtimeSubscriptions.current.size} channels active`);
-        
-        if (activeChannels.length === 0 && realtimeSubscriptions.current.size > 0) {
-          console.log('⚠️ No active realtime channels detected - attempting reconnect...');
-          if (reconnectAttempts.current < maxReconnectAttempts) {
-            reconnectAttempts.current++;
-            setupRealtimeSubscriptions();
-          } else {
-            console.log('🚨 Max reconnect attempts reached - forcing full refresh...');
-            reconnectAttempts.current = 0;
-            forceRefreshNotifications();
-          }
-        } else if (activeChannels.length > 0) {
-          reconnectAttempts.current = 0;
-        }
-      }
-    }, 15000);
-
-    return () => clearInterval(healthCheckInterval);
-  }, [session, forceRefreshNotifications, setupRealtimeSubscriptions]);
-
-  // Auth Effect
-  useEffect(() => {
-    let mounted = true;
-    
-    const initAuth = async () => {
-      try {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (mounted) {
-          setSession(session);
-          setAuthLoading(false);
-          console.log('🔐 Auth session initialized:', !!session);
-        }
-      } catch (error) {
-        console.error('❌ Error getting auth session:', error);
-        if (mounted) {
-          setAuthLoading(false);
-        }
-      }
-    };
-
-    initAuth();
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (mounted) {
-        console.log('🔐 Auth state changed:', !!session);
-        setSession(session);
-        setAuthLoading(false);
-        
-        if (!session) {
-          setUnauthedPage('landing');
-          dataFetched.current = false;
-          oneSignalInitialized.current = false;
-          initializationInProgress.current = false;
-          setNotifications([]);
-          setTopics([]);
-          setToasts([]);
-          setProfile(null);
-          setIsPushEnabled(false);
-          setIsPushLoading(false);
-          
-          pendingUpdates.current.forEach(timeout => clearTimeout(timeout));
-          pendingUpdates.current.clear();
-          
-          console.log('🧹 Clearing realtime subscriptions due to auth change');
-          realtimeSubscriptions.current.forEach(channel => {
-            try {
-              channel.unsubscribe();
-            } catch (error) {
-              console.warn('Error unsubscribing from channel:', error);
-            }
-          });
-          realtimeSubscriptions.current.clear();
-
-          navigate('/', { replace: true });
-        }
-      }
-    });
-
-    return () => {
-      mounted = false;
-      subscription.unsubscribe();
-      pendingUpdates.current.forEach(timeout => clearTimeout(timeout));
-      pendingUpdates.current.clear();
-    };
-  }, []);
 
   const mapOneSignalSeverity = useCallback((notification: any): Severity => {
     if (notification.data?.severity) {
@@ -673,6 +234,312 @@ function App() {
     }
   }, [soundEnabled, snoozedUntil, topics, addToast]);
 
+  const setupRealtimeSubscriptions = useCallback(() => {
+    if (!session || !dataFetched.current) {
+      console.log('⏸️ Skipping realtime setup - not ready');
+      return;
+    }
+
+    console.log('🔗 Setting up realtime subscriptions...');
+
+    // Clean up existing subscriptions
+    realtimeSubscriptions.current.forEach(channel => {
+      try {
+        if (channel.state !== 'closed') {
+          supabase.removeChannel(channel);
+        }
+      } catch (error) {
+        console.warn('⚠️ Error cleaning up old channel:', error);
+      }
+    });
+    realtimeSubscriptions.current.clear();
+
+    // Notifications channel
+    const notificationChannel = supabase
+      .channel('notifications-global')
+      .on<NotificationFromDB>('postgres_changes', { 
+        event: 'INSERT', 
+        schema: 'public', 
+        table: 'notifications' 
+      }, async (payload) => {
+        console.log('🔵 New notification received via realtime:', {
+          id: payload.new.id,
+          title: payload.new.title,
+          topic_id: payload.new.topic_id
+        });
+        
+        const newNotification = {...payload.new, comments: [] } as ExtendedNotification;
+        
+        setNotifications(prev => {
+          const exists = prev.some(n => 
+            n.id === newNotification.id || 
+            (n.oneSignalId && newNotification.oneSignalId && n.oneSignalId === newNotification.oneSignalId)
+          );
+          
+          if (exists) {
+            console.log('🔄 Notification already exists, skipping INSERT');
+            return prev;
+          }
+          console.log('➕ Adding new notification to list');
+          return [newNotification, ...prev];
+        });
+        
+        setTimeout(() => {
+          handleNewNotification(newNotification);
+        }, 200);
+      })
+      .on<NotificationFromDB>('postgres_changes', { 
+        event: 'UPDATE', 
+        schema: 'public', 
+        table: 'notifications' 
+      }, payload => {
+        console.log('🟡 Notification UPDATE received via realtime:', {
+          id: payload.new.id,
+          oldStatus: payload.old?.status,
+          newStatus: payload.new.status
+        });
+        
+        if (!pendingUpdates.current.has(payload.new.id)) {
+          setNotifications(prev => prev.map(n => {
+            if (n.id === payload.new.id) {
+              console.log('🟢 Applying realtime update to notification:', n.id);
+              return {
+                ...n,
+                ...payload.new,
+                comments: n.comments || [],
+                updated_at: payload.new.updated_at || new Date().toISOString()
+              } as ExtendedNotification;
+            }
+            return n;
+          }));
+        } else {
+          console.log('⏸️ Skipping realtime update - local update pending for:', payload.new.id);
+        }
+      })
+      .on('system', { event: '*' }, (payload) => {
+        console.log('📱 System event:', payload);
+        if (payload.event === 'phx_error' || payload.status === 'error') {
+          console.log('❌ Realtime connection error detected');
+        }
+      })
+      .subscribe((status, err) => {
+        if (err) {
+          console.error('❌ Notification channel subscription error:', err);
+        } else {
+          console.log('✅ Notification channel status:', status);
+        }
+      });
+
+    realtimeSubscriptions.current.set('notifications', notificationChannel);
+
+    // Comments channel
+    const commentsChannel = supabase
+      .channel(`comments-${session.user.id}`)
+      .on<CommentFromDB>('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'comments'
+      }, async (payload) => {
+        console.log('💬 New comment received via realtime:', payload.new);
+        const newCommentPayload = payload.new;
+        const newComment = { ...newCommentPayload } as Comment;
+
+        if (newComment.user_id && !userNames.has(newComment.user_id)) {
+          console.log(`Fetching new user name for ${newComment.user_id}`);
+          const { data: profileData, error: profileError } = await supabase
+            .from('profiles')
+            .select('full_name')
+            .eq('id', newComment.user_id)
+            .single();
+          if (profileData) {
+            setUserNames(prev => new Map(prev).set(newComment.user_id, profileData.full_name || 'Unknown User'));
+          }
+        }
+
+        setNotifications(prev => {
+          const notification = prev.find(n => n.id === newComment.notification_id);
+          if (notification && notification.comments.some(c => c.id === newComment.id)) {
+            return prev;
+          }
+          
+          return prev.map(n =>
+            n.id === newComment.notification_id
+              ? {
+                ...n,
+                comments: [...(n.comments || []), newComment]
+                  .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+              }
+              : n
+          );
+        });
+      })
+      .on('system', { event: '*' }, (payload) => {
+        if (payload.event === 'phx_error' || payload.status === 'error') {
+          console.log('❌ Comments channel error detected');
+        }
+      })
+      .subscribe((status, err) => {
+        if (err) {
+          console.error('❌ Comments channel subscription error:', err);
+        } else {
+          console.log('✅ Comments channel status:', status);
+        }
+      });
+
+    realtimeSubscriptions.current.set('comments', commentsChannel);
+
+    // Topics channel
+    const topicChannel = supabase
+      .channel(`topics-${session.user.id}`)
+      .on<TopicFromDB>('postgres_changes', { 
+        event: 'INSERT', 
+        schema: 'public', 
+        table: 'topics' 
+      }, payload => {
+        console.log('📂 New topic received:', payload.new);
+        setTopics(prev => [...prev, {...payload.new, subscribed: false} as Topic]);
+      })
+      .on('system', { event: '*' }, (payload) => {
+        if (payload.event === 'phx_error' || payload.status === 'error') {
+          console.log('❌ Topics channel error detected');
+        }
+      })
+      .subscribe((status, err) => {
+        if (err) {
+          console.error('❌ Topics channel subscription error:', err);
+        } else {
+          console.log('✅ Topics channel status:', status);
+        }
+      });
+
+    realtimeSubscriptions.current.set('topics', topicChannel);
+
+    // Subscriptions channel
+    const subscriptionChannel = supabase
+      .channel(`subscriptions-${session.user.id}`)
+      .on<SubscriptionFromDB>('postgres_changes', { 
+        event: '*', 
+        schema: 'public', 
+        table: 'topic_subscriptions', 
+        filter: `user_id=eq.${session.user.id}` 
+      }, (payload) => {
+        console.log('🔄 Subscription change:', payload);
+        
+        if (payload.eventType === 'INSERT') {
+          const newSub = payload.new as SubscriptionFromDB;
+          setTopics(prev => prev.map(t => 
+            t.id === newSub.topic_id ? {...t, subscribed: true, subscription_id: newSub.id} : t
+          ));
+        }
+        if (payload.eventType === 'DELETE') {
+          const oldSub = payload.old as Partial<SubscriptionFromDB>;
+          if (oldSub?.topic_id) {
+            setTopics(prev => prev.map(t => 
+              t.id === oldSub.topic_id ? {...t, subscribed: false, subscription_id: undefined} : t
+            ));
+          }
+        }
+      })
+      .on('system', { event: '*' }, (payload) => {
+        if (payload.event === 'phx_error' || payload.status === 'error') {
+          console.log('❌ Subscriptions channel error detected');
+        }
+      })
+      .subscribe((status, err) => {
+        if (err) {
+          console.error('❌ Subscriptions channel subscription error:', err);
+        } else {
+          console.log('✅ Subscriptions channel status:', status);
+        }
+      });
+
+    realtimeSubscriptions.current.set('subscriptions', subscriptionChannel);
+    
+    console.log('✅ All realtime subscriptions set up successfully');
+  }, [session, handleNewNotification, userNames]);
+
+  // Periodic connection health check
+  useEffect(() => {
+    if (!session || !dataFetched.current) return;
+
+    const healthCheckInterval = setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        const activeChannels = Array.from(realtimeSubscriptions.current.values()).filter(
+          channel => channel.state === 'joined'
+        );
+        
+        console.log(`🔍 Health check: ${activeChannels.length}/${realtimeSubscriptions.current.size} channels active`);
+      }
+    }, 30000);
+
+    return () => clearInterval(healthCheckInterval);
+  }, [session]);
+
+  // Auth Effect
+  useEffect(() => {
+    let mounted = true;
+    
+    const initAuth = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (mounted) {
+          setSession(session);
+          setAuthLoading(false);
+          console.log('🔐 Auth session initialized:', !!session);
+        }
+      } catch (error) {
+        console.error('❌ Error getting auth session:', error);
+        if (mounted) {
+          setAuthLoading(false);
+        }
+      }
+    };
+
+    initAuth();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (mounted) {
+        console.log('🔐 Auth state changed:', !!session);
+        setSession(session);
+        setAuthLoading(false);
+        
+        if (!session) {
+          setUnauthedPage('landing');
+          dataFetched.current = false;
+          oneSignalInitialized.current = false;
+          setNotifications([]);
+          setTopics([]);
+          setToasts([]);
+          setProfile(null);
+          setIsPushEnabled(false);
+          setIsPushLoading(false);
+          
+          pendingUpdates.current.forEach(timeout => clearTimeout(timeout));
+          pendingUpdates.current.clear();
+          
+          console.log('🧹 Clearing realtime subscriptions due to auth change');
+          realtimeSubscriptions.current.forEach(channel => {
+            try {
+              supabase.removeChannel(channel);
+            } catch (error) {
+              console.warn('Error removing channel:', error);
+            }
+          });
+          realtimeSubscriptions.current.clear();
+
+          navigate('/', { replace: true });
+        }
+      }
+    });
+
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+      pendingUpdates.current.forEach(timeout => clearTimeout(timeout));
+      pendingUpdates.current.clear();
+    };
+  }, []);
+
   // OneSignal Initialization
   useEffect(() => {
     if (!session || authLoading) {
@@ -684,10 +551,7 @@ function App() {
     }
 
     const initOneSignal = async () => {
-      if (initializationInProgress.current) return;
-
       try {
-        initializationInProgress.current = true;
         setIsPushLoading(true);
         console.log('🔔 Initializing OneSignal...');
         
@@ -718,7 +582,6 @@ function App() {
         console.error('❌ Failed to initialize OneSignal:', error);
       } finally {
         setIsPushLoading(false);
-        initializationInProgress.current = false;
       }
     };
 
@@ -829,11 +692,10 @@ function App() {
 
   // Data Fetching and Realtime Subscriptions
   useEffect(() => {
-    if (!session || dataFetched.current || authLoading || isFetching.current) {
+    if (!session || dataFetched.current || authLoading) {
       return;
     }
 
-    isFetching.current = true;
     let mounted = true;
 
     const fetchInitialData = async () => {
@@ -966,14 +828,11 @@ function App() {
     fetchInitialData()
       .then(() => {
         if (mounted && dataFetched.current) {
-          setupRealtimeSubscriptions(); // Call directly, no setTimeout
+          setupRealtimeSubscriptions();
         }
       })
       .catch(error => {
         console.error('❌ Failed to fetch initial data:', error);
-      })
-      .finally(() => {
-        isFetching.current = false;
       });
 
     return () => {
@@ -983,27 +842,14 @@ function App() {
       pendingUpdates.current.forEach(timeout => clearTimeout(timeout));
       pendingUpdates.current.clear();
       
-      const cleanup = async () => {
-        const channelPromises = Array.from(realtimeSubscriptions.current.values()).map(async (channel) => {
-          try {
-            if (channel && channel.state !== 'closed') {
-              await channel.unsubscribe();
-              await supabase.removeChannel(channel);
-            }
-          } catch (error) {
-            console.warn('⚠️ Error cleaning up channel:', error);
-          }
-        });
-        
+      realtimeSubscriptions.current.forEach(channel => {
         try {
-          await Promise.allSettled(channelPromises);
-          realtimeSubscriptions.current.clear();
+          supabase.removeChannel(channel);
         } catch (error) {
-          console.warn('⚠️ Some channels failed to cleanup properly:', error);
+          console.warn('⚠️ Error cleaning up channel:', error);
         }
-      };
-      
-      cleanup();
+      });
+      realtimeSubscriptions.current.clear();
     };
   }, [session, authLoading, handleNewNotification, setupRealtimeSubscriptions]);
 
