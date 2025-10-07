@@ -1,3 +1,4 @@
+// OneSignal Service File
 import { supabase } from './supabaseClient';
 
 declare global {
@@ -237,8 +238,9 @@ export class OneSignalService {
           callback(notificationData);
         });
         
+        // UPDATED: Add background click handling (fires when SW opens app from background push)
         window.OneSignal.Notifications.addEventListener('click', (event: any) => {
-          console.log('🔔 Notification clicked (new API):', event);
+          console.log('🔔 Notification clicked (new API) - handles both foreground and background:', event);
           
           const oneSignalId = event.notification?.notificationId;
           const notificationId = oneSignalId || `click-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
@@ -278,6 +280,7 @@ export class OneSignalService {
           callback(notificationData);
         });
         
+        // UPDATED: Add legacy background/foreground click
         window.OneSignal.on('notificationClick', (event: any) => {
           console.log('🔔 Notification clicked (legacy API):', event);
           

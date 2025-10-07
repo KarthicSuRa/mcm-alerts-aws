@@ -15,6 +15,17 @@ interface SettingsModalProps {
   onUnsubscribeFromPush: () => void;
 }
 
+// A simple, silent audio file encoded in Base64
+const silentAudio = 'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA';
+
+// This function plays a silent sound and must be called from a user-initiated event
+const unlockAudio = () => {
+  const audio = new Audio(silentAudio);
+  audio.volume = 0.01; // As low as possible
+  audio.play().catch(e => console.warn("Audio unlock failed:", e));
+};
+
+
 export const SettingsModal: React.FC<SettingsModalProps> = ({
   isOpen,
   onClose,
@@ -38,6 +49,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         setSnoozedUntil(newSnoozeTime);
     }
     onClose();
+  };
+  
+  const handleSoundToggle = (enabled: boolean) => {
+    if (enabled) {
+      console.log('🔊 Unlocking audio context...');
+      unlockAudio();
+    }
+    setSoundEnabled(enabled);
   };
 
   return (
@@ -68,7 +87,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     </div>
                     <Switch 
                         checked={soundEnabled} 
-                        onChange={setSoundEnabled} 
+                        onChange={handleSoundToggle} 
                     />
                 </div>
 
