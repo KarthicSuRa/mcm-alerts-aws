@@ -375,46 +375,42 @@ export class OneSignalService {
 
   async isSubscribed(): Promise<boolean> {
     if (!this.initialized) {
+      console.warn('⚠️ OneSignal not initialized, cannot check subscription.');
       return false;
     }
-
+  
     if (!this.isPushSupported()) {
+      console.warn('⚠️ Push not supported, cannot be subscribed.');
       return false;
     }
-
+  
     try {
+      // Modern v16+ SDK: This is the most reliable check.
       if (window.OneSignal?.User?.PushSubscription) {
-        try {
-          const optedIn = await window.OneSignal.User.PushSubscription.optedIn;
-          console.log('🔔 Subscription status (optedIn):', optedIn);
-          return Boolean(optedIn);
-        } catch (error) {
-          console.warn('⚠️ Failed to check optedIn status:', error);
-        }
-
-        try {
-          const id = await window.OneSignal.User.PushSubscription.id;
-          const token = await window.OneSignal.User.PushSubscription.token;
-          console.log('🔔 Subscription status (ID exists):', !!id, 'Token exists:', !!token);
-          return Boolean(id && token);
-        } catch (error) {
-          console.warn('⚠️ Failed to check subscription ID:', error);
-        }
+        const optedIn = await window.OneSignal.User.PushSubscription.optedIn;
+        console.log('🔔 Subscription status (optedIn):', optedIn);
+        return Boolean(optedIn);
       }
-
+  
+      // Fallback for Legacy v15 SDK
       if (window.OneSignal?.isPushNotificationsEnabled) {
-        const enabled = await window.OneSignal.isPushNotificationsEnabled();
+        const enabled = await new Promise<boolean>(resolve => {
+          window.OneSignal.isPushNotificationsEnabled((isEnabled: boolean) => {
+            resolve(isEnabled);
+          });
+        });
         console.log('🔔 Subscription status (legacy):', enabled);
         return enabled;
       }
-
-      console.log('🔔 No subscription check method available, assuming false');
+  
+      console.warn('⚠️ No subscription check method available, assuming false.');
       return false;
     } catch (error) {
       console.error('❌ Failed to check subscription status:', error);
       return false;
     }
   }
+  
 
   async getPlayerId(): Promise<string | null> {
     if (!this.initialized) {

@@ -25,7 +25,6 @@ const unlockAudio = () => {
   audio.play().catch(e => console.warn("Audio unlock failed:", e));
 };
 
-
 export const SettingsModal: React.FC<SettingsModalProps> = ({
   isOpen,
   onClose,
@@ -51,12 +50,22 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     onClose();
   };
   
-  const handleSoundToggle = (enabled: boolean) => {
-    if (enabled) {
+  const handleSoundToggle = (newCheckedState: boolean) => {
+    if (newCheckedState) {
       console.log('🔊 Unlocking audio context...');
       unlockAudio();
     }
-    setSoundEnabled(enabled);
+    setSoundEnabled(newCheckedState);
+  };
+
+  const handlePushToggle = (newCheckedState: boolean) => {
+    if (isPushLoading) return;
+
+    if (newCheckedState) {
+      onSubscribeToPush();
+    } else {
+      onUnsubscribeFromPush();
+    }
   };
 
   return (
@@ -99,7 +108,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     </div>
                     <Switch 
                         checked={isPushEnabled} 
-                        onChange={isPushEnabled ? onUnsubscribeFromPush : onSubscribeToPush}
+                        onChange={handlePushToggle}
                         disabled={isPushLoading}
                     />
                 </div>

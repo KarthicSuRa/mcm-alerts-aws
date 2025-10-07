@@ -34,18 +34,11 @@ function createErrorResponse(error, status = 400, details) {
     status
   });
 }
-/**
- * NEW & IMPROVED: This function now transforms the payload before validating it.
- * It ensures the payload has a `message` field by mapping it from `body` or `content` if necessary.
- * @param data The raw incoming request data.
- * @returns An object containing validation status, errors, and the transformed data.
- */ function transformAndValidatePayload(data) {
+function transformAndValidatePayload(data) {
   let transformedData = {
     ...data
   };
   const errors = [];
-  // ** THE FIX: ADAPTER LOGIC **
-  // If `message` is missing, try to map it from `body` or other common fields.
   if (!transformedData.message) {
     if (transformedData.body && typeof transformedData.body === 'string') {
       console.log("Transforming payload: Mapping 'body' to 'message'.");
@@ -55,8 +48,6 @@ function createErrorResponse(error, status = 400, details) {
       transformedData.message = transformedData.content;
     }
   }
-  // ** EXISTING VALIDATION LOGIC **
-  // Now, proceed with validation on the (potentially transformed) data.
   if (!transformedData.title || typeof transformedData.title !== 'string' || !transformedData.title.trim()) {
     errors.push('Title is required and must be a non-empty string');
   }
@@ -69,7 +60,6 @@ function createErrorResponse(error, status = 400, details) {
   if (transformedData.message && transformedData.message.length > 2000) {
     errors.push('Message too long (max 2000 characters)');
   }
-  // ... add any other pre-existing validation rules here ...
   return {
     isValid: errors.length === 0,
     errors,
@@ -99,7 +89,6 @@ Deno.serve(async (req)=>{
       return createErrorResponse('Invalid JSON in request body');
     }
     console.log('Received raw request data:', rawRequestData);
-    // Use the new transformer and validator function
     const { isValid, errors, data: processedData } = transformAndValidatePayload(rawRequestData);
     if (!isValid) {
       return createErrorResponse('Validation failed', 400, {
@@ -107,7 +96,6 @@ Deno.serve(async (req)=>{
       });
     }
     const { type, title, message, site, priority, topic_id, topic_name, severity, timestamp } = processedData;
-    // --- Topic Resolution ---
     let resolvedTopicId = topic_id?.trim() || null;
     let resolvedTopicName = topic_name?.trim() || null;
     if (resolvedTopicName && !resolvedTopicId) {
@@ -117,8 +105,6 @@ Deno.serve(async (req)=>{
       }
       resolvedTopicId = topicData.id;
     }
-    // ... rest of your topic resolution logic ...
-    // --- Notification Creation ---
     const finalSeverity = severityMap[String(severity || priority).toLowerCase()] || 'medium';
     const finalType = type || 'custom';
     const newNotification = {
@@ -137,7 +123,6 @@ Deno.serve(async (req)=>{
       throw new Error(`Database error: ${insertError.message}`);
     }
     console.log('Notification inserted successfully:', insertedNotification.id);
-    // --- OneSignal Push Notification Trigger ---
     let pushNotificationResult = null;
     if (resolvedTopicId && oneSignalAppId && oneSignalApiKey) {
       try {
@@ -193,6 +178,8 @@ async function sendOneSignalNotification(supabaseAdmin, topicId, notificationDat
     };
   }
   const playerIds = oneSignalPlayers.map((p)=>p.player_id);
+  // --- UPDATED PAYLOAD: Hybrid with visible headings/contents + data ---
+  // This ensures OneSignal SW auto-displays on background/mobile
   const oneSignalPayload = {
     app_id: appId,
     include_player_ids: playerIds,
@@ -203,11 +190,13 @@ async function sendOneSignalNotification(supabaseAdmin, topicId, notificationDat
       en: notificationData.message
     },
     data: {
-      notification_id: notificationData.id,
-      topic_id: notificationData.topic_id
+      ...notificationData
     },
+    content_available: true,
     priority: notificationData.severity === 'high' ? 10 : 5
   };
+  // --- END OF UPDATE ---
+  console.log('Sending hybrid payload to OneSignal:', oneSignalPayload);
   const oneSignalResponse = await fetch('https://onesignal.com/api/v1/notifications', {
     method: 'POST',
     headers: {

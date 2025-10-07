@@ -971,79 +971,92 @@ function App() {
   const subscribeToPush = useCallback(async () => {
     if (!session) return;
     setIsPushLoading(true);
-
+    
+    
     try {
-      console.log('🔔 Starting push subscription process...');
-      
-      const playerId = await oneSignalService.subscribe();
-      if (!playerId) {
-        throw new Error('Failed to get player ID from OneSignal');
-      }
-      
-      console.log('🔔 OneSignal subscription successful, player ID:', playerId);
-      
-      await oneSignalService.savePlayerIdToDatabase(session.user.id);
-      console.log('🔔 Player ID saved to database');
-      
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      
-      const subscribedTopics = topics.filter(t => t.subscribed);
-      if (subscribedTopics.length > 0) {
-        console.log('🔔 Setting tags for subscribed topics:', subscribedTopics.map(t => t.name));
-        
-        try {
-          const tags: Record<string, string> = {};
-          subscribedTopics.forEach(topic => {
-            tags[`topic_${topic.id}`] = '1';
-          });
-          
-          console.log('🔔 Tags to set:', tags);
-          await oneSignalService.setUserTags(tags);
-          console.log('🔔 Tags set successfully');
-        } catch (tagError) {
-          console.error('🔔 Failed to set tags (non-critical):', tagError);
-        }
-      }
-      
-      setIsPushEnabled(true);
-      console.log('🔔 Push notifications enabled successfully');
-      
-    } catch (error) {
-      console.error('🔔 Failed to subscribe to push notifications:', error);
-      
-      let errorMessage = 'Failed to enable push notifications. ';
-      if (error instanceof Error) {
-        if (error.message.includes('permission')) {
-          errorMessage += 'Please allow notifications in your browser.';
-        } else if (error.message.includes('player ID')) {
-          errorMessage += 'OneSignal registration failed. Please try again.';
-        } else if (error.message.includes('not supported')) {
-          errorMessage += 'Your browser does not support push notifications.';
-        } else {
-          errorMessage += 'Please try again or check your browser settings.';
-        }
-      }
-      
-      alert(errorMessage);
-    } finally {
-      setIsPushLoading(false);
+    console.log('🔔 Starting push subscription process...');
+    
+    
+    const playerId = await oneSignalService.subscribe();
+    if (!playerId) {
+    throw new Error('Failed to get player ID from OneSignal');
     }
-  }, [session, topics]);
-  
-  const unsubscribeFromPush = useCallback(async () => {
+    
+    
+    console.log('🔔 OneSignal subscription successful, player ID:', playerId);
+    
+    
+    await oneSignalService.savePlayerIdToDatabase(session.user.id);
+    console.log('🔔 Player ID saved to database');
+    
+    
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    
+    
+    const subscribedTopics = topics.filter(t => t.subscribed);
+    if (subscribedTopics.length > 0) {
+    console.log('🔔 Setting tags for subscribed topics:', subscribedTopics.map(t => t.name));
+    
+    
+    try {
+    const tags: Record<string, string> = {};
+    subscribedTopics.forEach(topic => {
+    tags[`topic_${topic.id}`] = '1';
+    });
+    
+    
+    console.log('🔔 Tags to set:', tags);
+    await oneSignalService.setUserTags(tags);
+    console.log('🔔 Tags set successfully');
+    } catch (tagError) {
+    console.error('🔔 Failed to set tags (non-critical):', tagError);
+    }
+    }
+    
+    
+    console.log('🔔 Push notifications enabled successfully');
+    
+    
+    } catch (error) {
+    console.error('🔔 Failed to subscribe to push notifications:', error);
+    
+    
+    let errorMessage = 'Failed to enable push notifications. ';
+    if (error instanceof Error) {
+    if (error.message.includes('permission')) {
+    errorMessage += 'Please allow notifications in your browser.';
+    } else if (error.message.includes('player ID')) {
+    errorMessage += 'OneSignal registration failed. Please try again.';
+    } else if (error.message.includes('not supported')) {
+    errorMessage += 'Your browser does not support push notifications.';
+    } else {
+    errorMessage += 'Please try again or check your browser settings.';
+    }
+    }
+    
+    
+    alert(errorMessage);
+    } finally {
+    setIsPushLoading(false);
+    }
+    }, [session, topics]);
+    
+    
+    const unsubscribeFromPush = useCallback(async () => {
     if (!session) return;
     setIsPushLoading(true);
     
+    
     try {
-      await oneSignalService.unsubscribe();
-      await oneSignalService.removePlayerIdFromDatabase(session.user.id);
-      setIsPushEnabled(false);
+    await oneSignalService.unsubscribe();
+    await oneSignalService.removePlayerIdFromDatabase(session.user.id);
+    console.log('🔔 Push notifications disabled successfully');
     } catch (error) {
-      console.error('Failed to unsubscribe from push:', error);
+    console.error('Failed to unsubscribe from push:', error);
     } finally {
-      setIsPushLoading(false);
+    setIsPushLoading(false);
     }
-  }, [session]);
+    }, [session]);
 
   // Theme effect
   useEffect(() => {
