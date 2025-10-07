@@ -88,7 +88,7 @@ function App() {
 
   const addToast = useCallback((notification: ExtendedNotification) => {
     console.log('🍞 Adding toast notification:', notification.title);
-    setToasts(prev => [{...notification}, ...prev]);
+    setToasts(prev => [{ ...notification }, ...prev]);
   }, []);
 
   const removeToast = useCallback((id: string) => {
@@ -153,14 +153,18 @@ function App() {
           };
         });
         
-        setNotifications(transformedData as ExtendedNotification[]);
         console.log('✅ Notifications force refreshed successfully:', transformedData.length);
-        
+        setNotifications(transformedData as ExtendedNotification[]);
+        dataFetched.current = true;
+      } else {
+        console.log('📭 No notifications found during force refresh');
+        setNotifications([]);
         dataFetched.current = true;
       }
     } catch (error) {
       console.error('Error in force refresh:', error);
       alert('Failed to refresh notifications. Please try again.');
+      dataFetched.current = false;
     }
   }, [session]);
 
@@ -236,17 +240,18 @@ function App() {
 
   const setupRealtimeSubscriptions = useCallback(() => {
     if (!session || !dataFetched.current) {
-      console.log('⏸️ Skipping realtime setup - not ready');
+      console.log('⏸️ Skipping realtime setup - not ready', { session: !!session, dataFetched: dataFetched.current });
       return;
     }
 
-    console.log('🔗 Setting up realtime subscriptions...');
+    console.log('🔗 Setting up realtime subscriptions for user:', session.user.id);
 
     // Clean up existing subscriptions
     realtimeSubscriptions.current.forEach(channel => {
       try {
         if (channel.state !== 'closed') {
           supabase.removeChannel(channel);
+          console.log('🧹 Removed existing channel:', channel.name);
         }
       } catch (error) {
         console.warn('⚠️ Error cleaning up old channel:', error);
@@ -300,18 +305,22 @@ function App() {
         });
         
         if (!pendingUpdates.current.has(payload.new.id)) {
-          setNotifications(prev => prev.map(n => {
-            if (n.id === payload.new.id) {
-              console.log('🟢 Applying realtime update to notification:', n.id);
-              return {
-                ...n,
-                ...payload.new,
-                comments: n.comments || [],
-                updated_at: payload.new.updated_at || new Date().toISOString()
-              } as ExtendedNotification;
-            }
-            return n;
-          }));
+          setNotifications(prev => {
+            const updatedNotifications = prev.map(n => {
+              if (n.id === payload.new.id) {
+                console.log('🟢 Applying realtime update to notification:', n.id);
+                return {
+                  ...n,
+                  ...payload.new,
+                  comments: n.comments || [],
+                  updated_at: payload.new.updated_at || new Date().toISOString()
+                } as ExtendedNotification;
+              }
+              return n;
+            });
+            console.log('🔔 Updated notifications state:', updatedNotifications.length);
+            return updatedNotifications;
+          });
         } else {
           console.log('⏸️ Skipping realtime update - local update pending for:', payload.new.id);
         }
@@ -319,7 +328,7 @@ function App() {
       .on('system', { event: '*' }, (payload) => {
         console.log('📱 System event:', payload);
         if (payload.event === 'phx_error' || payload.status === 'error') {
-          console.log('❌ Realtime connection error detected');
+          console.error('❌ Realtime connection error detected:', payload);
         }
       })
       .subscribe((status, err) => {
@@ -359,23 +368,26 @@ function App() {
         setNotifications(prev => {
           const notification = prev.find(n => n.id === newComment.notification_id);
           if (notification && notification.comments.some(c => c.id === newComment.id)) {
+            console.log('🔄 Comment already exists, skipping');
             return prev;
           }
           
-          return prev.map(n =>
+          const updatedNotifications = prev.map(n =>
             n.id === newComment.notification_id
               ? {
-                ...n,
-                comments: [...(n.comments || []), newComment]
-                  .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
-              }
+                  ...n,
+                  comments: [...(n.comments || []), newComment]
+                    .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+                }
               : n
           );
+          console.log('🔔 Updated notifications with new comment:', updatedNotifications.length);
+          return updatedNotifications;
         });
       })
       .on('system', { event: '*' }, (payload) => {
         if (payload.event === 'phx_error' || payload.status === 'error') {
-          console.log('❌ Comments channel error detected');
+          console.error('❌ Comments channel error detected:', payload);
         }
       })
       .subscribe((status, err) => {
@@ -401,7 +413,7 @@ function App() {
       })
       .on('system', { event: '*' }, (payload) => {
         if (payload.event === 'phx_error' || payload.status === 'error') {
-          console.log('❌ Topics channel error detected');
+          console.error('❌ Topics channel error detected:', payload);
         }
       })
       .subscribe((status, err) => {
@@ -442,7 +454,7 @@ function App() {
       })
       .on('system', { event: '*' }, (payload) => {
         if (payload.event === 'phx_error' || payload.status === 'error') {
-          console.log('❌ Subscriptions channel error detected');
+          console.error('❌ Subscriptions channel error detected:', payload);
         }
       })
       .subscribe((status, err) => {
@@ -457,6 +469,26 @@ function App() {
     
     console.log('✅ All realtime subscriptions set up successfully');
   }, [session, handleNewNotification, userNames]);
+
+  // Dedicated effect for setting up real-time subscriptions
+  useEffect(() => {
+    if (!session || !dataFetched.current) return;
+
+    console.log('🚀 Triggering real-time subscriptions setup');
+    setupRealtimeSubscriptions();
+
+    return () => {
+      console.log('🧹 Cleaning up real-time subscriptions');
+      realtimeSubscriptions.current.forEach(channel => {
+        try {
+          supabase.removeChannel(channel);
+        } catch (error) {
+          console.warn('⚠️ Error cleaning up channel:', error);
+        }
+      });
+      realtimeSubscriptions.current.clear();
+    };
+  }, [session, dataFetched.current, setupRealtimeSubscriptions]);
 
   // Periodic connection health check
   useEffect(() => {
@@ -538,15 +570,12 @@ function App() {
       pendingUpdates.current.forEach(timeout => clearTimeout(timeout));
       pendingUpdates.current.clear();
     };
-  }, []);
+  }, [navigate]);
 
   // OneSignal Initialization
   useEffect(() => {
-    if (!session || authLoading) {
-      return;
-    }
-    
-    if (oneSignalInitialized.current) {
+    if (!session || authLoading || oneSignalInitialized.current) {
+      console.log('⏸️ Skipping OneSignal initialization', { session: !!session, authLoading, initialized: oneSignalInitialized.current });
       return;
     }
 
@@ -557,12 +586,8 @@ function App() {
         
         await oneSignalService.initialize();
         
-        try {
-          console.log(`🔔 Logging into OneSignal with external user ID: ${session.user.id}`);
-          await oneSignalService.login(session.user.id);
-        } catch (error) {
-          console.error('❌ OneSignal login failed:', error);
-        }
+        console.log(`🔔 Logging into OneSignal with external user ID: ${session.user.id}`);
+        await oneSignalService.login(session.user.id);
         
         const isSubscribed = await oneSignalService.isSubscribed();
         console.log('🔔 OneSignal subscription status on load:', isSubscribed);
@@ -586,7 +611,6 @@ function App() {
     };
 
     initOneSignal();
-
   }, [session, authLoading, oneSignalService, handleNewNotification]);
 
   const updateNotification = useCallback(async (notificationId: string, updates: NotificationUpdatePayload) => {
@@ -604,22 +628,26 @@ function App() {
       pendingUpdates.current.delete(notificationId);
     }
     
-    setNotifications(prev => prev.map(n => {
-      if (n.id === notificationId) {
-        console.log('⚡ Optimistic update applied:', { 
-          id: notificationId, 
-          oldStatus: n.status, 
-          newStatus: updates.status 
-        });
-        return {
-          ...n,
-          ...updates,
-          updated_at: new Date().toISOString(),
-          comments: n.comments || []
-        } as ExtendedNotification;
-      }
-      return n;
-    }));
+    setNotifications(prev => {
+      const updatedNotifications = prev.map(n => {
+        if (n.id === notificationId) {
+          console.log('⚡ Optimistic update applied:', { 
+            id: notificationId, 
+            oldStatus: n.status, 
+            newStatus: updates.status 
+          });
+          return {
+            ...n,
+            ...updates,
+            updated_at: new Date().toISOString(),
+            comments: n.comments || []
+          } as ExtendedNotification;
+        }
+        return n;
+      });
+      console.log('🔔 Updated notifications state for update:', updatedNotifications.length);
+      return updatedNotifications;
+    });
     
     const updateTimeout = setTimeout(async () => {
       try {
@@ -690,9 +718,10 @@ function App() {
     pendingUpdates.current.set(notificationId, updateTimeout);
   }, [notifications]);
 
-  // Data Fetching and Realtime Subscriptions
+  // Data Fetching
   useEffect(() => {
     if (!session || dataFetched.current || authLoading) {
+      console.log('⏸️ Skipping data fetch', { session: !!session, dataFetched: dataFetched.current, authLoading });
       return;
     }
 
@@ -825,16 +854,7 @@ function App() {
       }
     };
 
-    fetchInitialData()
-      .then(() => {
-        if (mounted && dataFetched.current) {
-          setupRealtimeSubscriptions();
-        }
-      })
-      .catch(error => {
-        console.error('❌ Failed to fetch initial data:', error);
-      });
-
+    fetchInitialData();
     return () => {
       console.log('🧹 Cleaning up data fetching effect...');
       mounted = false;
@@ -851,7 +871,7 @@ function App() {
       });
       realtimeSubscriptions.current.clear();
     };
-  }, [session, authLoading, handleNewNotification, setupRealtimeSubscriptions]);
+  }, [session, authLoading]);
 
   // Fetch Monitored Sites
   useEffect(() => {
@@ -1279,7 +1299,6 @@ function App() {
       console.log('✅ All notifications cleared successfully');
       setNotifications([]);
       setToasts([]);
-
     } catch (error) {
       console.error("❌ Failed to clear logs:", error);
       alert('Failed to clear logs. Please try again.');
@@ -1493,6 +1512,7 @@ function App() {
                   }
 
                   if (session && profile) {
+                    console.log('🖼️ Rendering DashboardPage with notifications:', notifications.length);
                     return (
                       <DashboardPage
                         onLogout={handleLogout}
