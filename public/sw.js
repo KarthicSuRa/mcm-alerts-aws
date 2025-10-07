@@ -1,97 +1,65 @@
-// Service Worker for MCM Alerts with OneSignal integration
+/* eslint-disable no-restricted-globals */
+
+// Service Worker for MCM Alerts with OneSignal and Workbox integration
+
+// 1. OneSignal SDK
+// This is required for OneSignal to work.
 importScripts('https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.sw.js');
 
-const CACHE_NAME = 'mcm-alerts-cache-v1';
-const STATIC_ASSETS = [
-  '/',
-  '/manifest.json',
-  '/alert.wav',
-  '/icon-192x192.png', // Notification icon (OneSignal uses this)
-  '/badge-72x72.png'   // Badge icon
-  // Add other static assets you want to cache
-];
+// 2. Workbox Precaching
+// The self.__WB_MANIFEST placeholder is the injection point for the list of assets to cache.
+// This is filled automatically by vite-plugin-pwa during the build process.
+import { precacheAndRoute } from 'workbox-precaching';
 
-// Install event - cache essential resources
+console.log('Service Worker: Script loading...');
+
+// The precacheAndRoute function takes the manifest of files to cache and sets up
+// a 'fetch' event listener to serve those files from the cache.
+precacheAndRoute(self.__WB_MANIFEST || []);
+
+// 3. Custom Service Worker Logic (Install, Activate, Fetch)
+// With workbox-precaching, you no longer need manual 'install' or 'activate' events for caching.
+// The 'fetch' event is also handled by precacheAndRoute for the precached assets.
+
 self.addEventListener('install', event => {
-  console.log('Service Worker: Installing...');
-  
-  event.waitUntil(
-    caches.open(CACHE_NAME)
-      .then(cache => {
-        console.log('Service Worker: Caching static assets');
-        return cache.addAll(STATIC_ASSETS);
-      })
-      .then(() => {
-        console.log('Service Worker: Static assets cached');
-        return self.skipWaiting();
-      })
-      .catch(error => {
-        console.error('Service Worker: Failed to cache static assets:', error);
-      })
-  );
+  console.log('Service Worker: Install event');
+  // self.skipWaiting() ensures the new service worker activates immediately.
+  self.skipWaiting(); 
 });
 
-// Activate event - clean up old caches and take control
 self.addEventListener('activate', event => {
-  console.log('Service Worker: Activating...');
-  
-  const cacheWhitelist = [CACHE_NAME];
-  
-  event.waitUntil(
-    Promise.all([
-      caches.keys().then(cacheNames => {
-        return Promise.all(
-          cacheNames.map(cacheName => {
-            if (cacheWhitelist.indexOf(cacheName) === -1) {
-              console.log('Service Worker: Deleting old cache', cacheName);
-              return caches.delete(cacheName);
-            }
-          })
-        );
-      }),
-      self.clients.claim()
-    ]).then(() => {
-      console.log('Service Worker: Activated and in control');
-    })
-  );
+  console.log('Service Worker: Activate event');
+  // self.clients.claim() allows the SW to control the page without a reload.
+  event.waitUntil(self.clients.claim()); 
 });
 
-// Fetch event - handle network requests with caching strategy
+// You can still add custom fetch listeners for things not handled by the precache,
+// like routing for external APIs, but the basic offline functionality is now handled.
 self.addEventListener('fetch', event => {
   const request = event.request;
   const url = new URL(request.url);
-  
-  if (request.method !== 'GET') {
+
+  // Let OneSignal handle its own requests
+  if (url.hostname.includes('onesignal.com') || url.hostname.includes('os.tc')) {
     return;
   }
-  
-  // Skip caching for OneSignal domains - let OneSignal handle these
-  if (url.hostname.includes('onesignal.com') || 
-      url.hostname.includes('os.tc') ||
-      url.pathname.includes('OneSignalSDK')) {
-    console.log('Service Worker: Skipping OneSignal request:', url.href);
-    return;
+
+  // Example of a custom network strategy for a specific path if needed.
+  // This is just an example; you can expand this for your API calls if required.
+  if (url.pathname === '/api/some-data') {
+    event.respondWith(
+      caches.open('api-cache').then(cache => {
+        return fetch(request)
+          .then(response => {
+            cache.put(request, response.clone());
+            return response;
+          })
+          .catch(() => cache.match(request));
+      })
+    );
   }
   
-  // Skip caching for Supabase real-time connections and API calls
-  if (url.hostname.includes('supabase.co') && 
-      (url.pathname.includes('/realtime') || 
-       url.pathname.includes('/rest/v1/') ||
-       url.pathname.includes('/auth/v1/') ||
-       url.pathname.includes('/functions/v1/'))) {
-    console.log('Service Worker: Skipping Supabase API request:', url.href);
-    return;
-  }
-  
-  // Skip caching for other external domains except trusted CDNs
-  if (url.origin !== self.location.origin && 
-      !url.hostname.includes('cdnjs.cloudflare.com') &&
-      !url.hostname.includes('fonts.googleapis.com') &&
-      !url.hostname.includes('fonts.gstatic.com')) {
-    return;
-  }
-  
-  // Caching strategies would go here if needed, but are omitted for simplicity
+  // For all other requests, Workbox's precaching strategy will handle them.
 });
 
-console.log('Service Worker: Script loaded successfully');
+console.log('Service Worker: Script loaded successfully and configured.');
