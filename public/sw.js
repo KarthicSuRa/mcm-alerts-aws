@@ -100,36 +100,37 @@ self.addEventListener('fetch', event => {
 // Helper functions (isStaticAsset, cacheFirst, networkFirst, isCriticalResource, updateCacheInBackground) remain unchanged
 // ... [Keep the existing helper functions as they are]
 
-// Handle push events (OneSignal handles most, but we can log for debugging)
-self.addEventListener('push', event => {
-  console.log('Service Worker: Push event received');
-  if (event.data) {
-    try {
-      const data = event.data.json();
-      console.log('Service Worker: Push data:', data);
-    } catch (error) {
-      console.log('Service Worker: Push data (text):', event.data.text());
-    }
+self.addEventListener('push', function(event) {
+  console.log('Service Worker: Push received.', event);
+  try {
+    const data = event.data.json();
+    console.log('Service Worker: Push data:', data);
+
+    const title = data.title || 'New Notification';
+    const options = {
+      body: data.body,
+      icon: data.icon,
+      data: {
+        url: data.data.url
+      }
+    };
+
+    event.waitUntil(
+      self.registration.showNotification(title, options)
+    );
+  } catch (error) {
+    console.error('Service Worker: Error processing push event:', error);
   }
 });
 
-// Handle notification click events
-self.addEventListener('notificationclick', event => {
-  console.log('Service Worker: Notification clicked');
+self.addEventListener('notificationclick', function(event) {
+  console.log('Service Worker: Notification clicked.', event);
   event.notification.close();
   event.waitUntil(
-    clients.matchAll({ type: 'window', includeUncontrolled: true }).then(clientList => {
-      for (const client of clientList) {
-        if (client.url.includes(self.location.origin) && 'focus' in client) {
-          return client.focus();
-        }
-      }
-      if (clients.openWindow) {
-        return clients.openWindow('/');
-      }
-    })
+    clients.openWindow(event.notification.data.url)
   );
 });
+
 
 // Handle background sync
 self.addEventListener('sync', event => {
