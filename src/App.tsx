@@ -72,6 +72,7 @@ function App() {
   const oneSignalService = OneSignalService.getInstance();
   const oneSignalInitialized = useRef(false);
   const dataFetched = useRef(false);
+  const isFetching = useRef(false); // Added to prevent concurrent fetches
   const realtimeSubscriptions = useRef<Map<string, any>>(new Map());
   const initializationInProgress = useRef(false);
   const pendingUpdates = useRef<Map<string, NodeJS.Timeout>>(new Map());
@@ -166,18 +167,16 @@ function App() {
         dataFetched.current = true;
         
         // After refresh, ensure realtime subscriptions are active
-        setTimeout(() => {
-          if (session && dataFetched.current) {
-            const hasActiveSubscriptions = Array.from(realtimeSubscriptions.current.values()).some(
-              channel => channel.state === 'joined' || channel.state === 'joining'
-            );
-            
-            if (!hasActiveSubscriptions) {
-              console.log('📱 No active subscriptions after refresh - reconnecting...');
-              setupRealtimeSubscriptions();
-            }
+        if (session && dataFetched.current) {
+          const hasActiveSubscriptions = Array.from(realtimeSubscriptions.current.values()).some(
+            channel => channel.state === 'joined' || channel.state === 'joining'
+          );
+          
+          if (!hasActiveSubscriptions) {
+            console.log('📱 No active subscriptions after refresh - reconnecting...');
+            setupRealtimeSubscriptions();
           }
-        }, 2000);
+        }
       }
     } catch (error) {
       console.error('Error in force refresh:', error);
@@ -185,7 +184,7 @@ function App() {
     }
   }, [session]);
 
-  // Setup realtime subscriptions function - needs to be accessible by mobile handlers
+  // Setup realtime subscriptions function
   const setupRealtimeSubscriptions = useCallback(() => {
     if (!session || !dataFetched.current) {
       console.log('⏸️ Skipping realtime setup - not ready');
@@ -206,7 +205,7 @@ function App() {
     });
     realtimeSubscriptions.current.clear();
 
-    // Notifications channel with enhanced mobile configuration
+    // Notifications channel
     const notificationChannel = supabase
       .channel('notifications-global', {
         config: {
@@ -227,7 +226,6 @@ function App() {
         const newNotification = {...payload.new, comments: [] } as ExtendedNotification;
         
         setNotifications(prev => {
-          // Check for duplicates by ID or OneSignal ID
           const exists = prev.some(n => 
             n.id === newNotification.id || 
             (n.oneSignalId && newNotification.oneSignalId && n.oneSignalId === newNotification.oneSignalId)
@@ -241,7 +239,6 @@ function App() {
           return [newNotification, ...prev];
         });
         
-        // Handle new notification with slight delay
         setTimeout(() => {
           handleNewNotification(newNotification);
         }, 200);
@@ -257,7 +254,6 @@ function App() {
           newStatus: payload.new.status
         });
         
-        // Only apply realtime updates if we don't have a pending local update
         if (!pendingUpdates.current.has(payload.new.id)) {
           setNotifications(prev => prev.map(n => {
             if (n.id === payload.new.id) {
@@ -279,73 +275,68 @@ function App() {
         console.log('📱 System event:', payload);
         if (payload.event === 'phx_error' || payload.status === 'error') {
           console.log('❌ Realtime connection error detected - will attempt reconnect');
-          // Don't immediately reconnect, let the health check handle it
         }
       })
       .subscribe((status, err) => {
         if (err) {
           console.error('❌ Notification channel subscription error:', err);
-          // Reset reconnect attempts on error
           reconnectAttempts.current = 0;
         } else {
           console.log('✅ Notification channel status:', status);
           if (status === 'SUBSCRIBED') {
-            reconnectAttempts.current = 0; // Reset on successful connection
+            reconnectAttempts.current = 0;
           }
         }
       });
 
     realtimeSubscriptions.current.set('notifications', notificationChannel);
 
-    // Comments channel with enhanced mobile configuration
+    // Comments channel
     const commentsChannel = supabase
-    .channel(`comments-${session.user.id}`, {
-      config: {
-        broadcast: { self: true },
-        presence: { key: session.user.id }
-      }
-    })
-    .on<CommentFromDB>('postgres_changes', {
-      event: 'INSERT',
-      schema: 'public',
-      table: 'comments'
-    }, async (payload) => {
-      console.log('💬 New comment received via realtime:', payload.new);
-      const newCommentPayload = payload.new;
-      const newComment = { ...newCommentPayload } as Comment;
+      .channel(`comments-${session.user.id}`, {
+        config: {
+          broadcast: { self: true },
+          presence: { key: session.user.id }
+        }
+      })
+      .on<CommentFromDB>('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'comments'
+      }, async (payload) => {
+        console.log('💬 New comment received via realtime:', payload.new);
+        const newCommentPayload = payload.new;
+        const newComment = { ...newCommentPayload } as Comment;
 
-      // Fetch user name if not already in map
-      if (newComment.user_id && !userNames.has(newComment.user_id)) {
+        if (newComment.user_id && !userNames.has(newComment.user_id)) {
           console.log(`Fetching new user name for ${newComment.user_id}`);
           const { data: profileData, error: profileError } = await supabase
-              .from('profiles')
-              .select('full_name')
-              .eq('id', newComment.user_id)
-              .single();
+            .from('profiles')
+            .select('full_name')
+            .eq('id', newComment.user_id)
+            .single();
           if (profileData) {
-              setUserNames(prev => new Map(prev).set(newComment.user_id, profileData.full_name || 'Unknown User'));
+            setUserNames(prev => new Map(prev).set(newComment.user_id, profileData.full_name || 'Unknown User'));
           }
-      }
-
-      setNotifications(prev => {
-        const notification = prev.find(n => n.id === newComment.notification_id);
-
-        // If the comment already exists in the state, don't add it again.
-        if (notification && notification.comments.some(c => c.id === newComment.id)) {
-          return prev;
         }
-        
-        return prev.map(n =>
-          n.id === newComment.notification_id
-            ? {
-              ...n,
-              comments: [...(n.comments || []), newComment]
-                .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
-            }
-            : n
-        );
-      });
-    })
+
+        setNotifications(prev => {
+          const notification = prev.find(n => n.id === newComment.notification_id);
+          if (notification && notification.comments.some(c => c.id === newComment.id)) {
+            return prev;
+          }
+          
+          return prev.map(n =>
+            n.id === newComment.notification_id
+              ? {
+                ...n,
+                comments: [...(n.comments || []), newComment]
+                  .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+              }
+              : n
+          );
+        });
+      })
       .on('system', { event: '*' }, (payload) => {
         if (payload.event === 'phx_error' || payload.status === 'error') {
           console.log('❌ Comments channel error detected');
@@ -361,7 +352,7 @@ function App() {
 
     realtimeSubscriptions.current.set('comments', commentsChannel);
 
-    // Topics channel with enhanced mobile configuration
+    // Topics channel
     const topicChannel = supabase
       .channel(`topics-${session.user.id}`, {
         config: {
@@ -392,7 +383,7 @@ function App() {
 
     realtimeSubscriptions.current.set('topics', topicChannel);
 
-    // Subscriptions channel with enhanced mobile configuration
+    // Subscriptions channel
     const subscriptionChannel = supabase
       .channel(`subscriptions-${session.user.id}`, {
         config: {
@@ -441,7 +432,7 @@ function App() {
     console.log('✅ All realtime subscriptions set up successfully');
   }, [session]);
 
-  // Mobile-specific: Handle visibility changes and reconnection
+  // Handle visibility changes and reconnection
   useEffect(() => {
     const handleVisibilityChange = () => {
       lastActivity.current = Date.now();
@@ -449,10 +440,8 @@ function App() {
       if (document.visibilityState === 'visible' && session) {
         console.log('📱 App became visible - checking realtime connections...');
         
-        // Small delay to ensure the app is fully active
         setTimeout(() => {
           if (session && dataFetched.current) {
-            // Check if realtime subscriptions are still active
             const hasActiveSubscriptions = Array.from(realtimeSubscriptions.current.values()).some(
               channel => channel.state === 'joined' || channel.state === 'joining'
             );
@@ -462,9 +451,8 @@ function App() {
               setupRealtimeSubscriptions();
             }
             
-            // Force refresh notifications if it's been a while
             const timeSinceLastActivity = Date.now() - lastActivity.current;
-            if (timeSinceLastActivity > 30000) { // 30 seconds
+            if (timeSinceLastActivity > 30000) {
               console.log('📱 App was inactive for a while - refreshing notifications...');
               forceRefreshNotifications();
             }
@@ -504,7 +492,6 @@ function App() {
       }
     };
 
-    // Add event listeners
     document.addEventListener('visibilitychange', handleVisibilityChange);
     window.addEventListener('focus', handleFocus);
     window.addEventListener('online', handleOnline);
@@ -519,12 +506,11 @@ function App() {
     };
   }, [session, forceRefreshNotifications, setupRealtimeSubscriptions]);
 
-  // Mobile-specific: Periodic connection health check
+  // Periodic connection health check
   useEffect(() => {
     if (!session || !dataFetched.current) return;
 
     const healthCheckInterval = setInterval(() => {
-      // Only run health check if app is visible
       if (document.visibilityState === 'visible') {
         const activeChannels = Array.from(realtimeSubscriptions.current.values()).filter(
           channel => channel.state === 'joined'
@@ -532,7 +518,6 @@ function App() {
         
         console.log(`🔍 Health check: ${activeChannels.length}/${realtimeSubscriptions.current.size} channels active`);
         
-        // If we have no active channels but should have them, reconnect
         if (activeChannels.length === 0 && realtimeSubscriptions.current.size > 0) {
           console.log('⚠️ No active realtime channels detected - attempting reconnect...');
           if (reconnectAttempts.current < maxReconnectAttempts) {
@@ -544,16 +529,15 @@ function App() {
             forceRefreshNotifications();
           }
         } else if (activeChannels.length > 0) {
-          // Reset reconnect attempts on successful connection
           reconnectAttempts.current = 0;
         }
       }
-    }, 15000); // Check every 15 seconds
+    }, 15000);
 
     return () => clearInterval(healthCheckInterval);
   }, [session, forceRefreshNotifications, setupRealtimeSubscriptions]);
 
-  // Auth Effect - Simplified and optimized
+  // Auth Effect
   useEffect(() => {
     let mounted = true;
     
@@ -582,7 +566,6 @@ function App() {
         setAuthLoading(false);
         
         if (!session) {
-          // Reset all state when user logs out
           setUnauthedPage('landing');
           dataFetched.current = false;
           oneSignalInitialized.current = false;
@@ -594,7 +577,6 @@ function App() {
           setIsPushEnabled(false);
           setIsPushLoading(false);
           
-          // Clear pending updates
           pendingUpdates.current.forEach(timeout => clearTimeout(timeout));
           pendingUpdates.current.clear();
           
@@ -608,7 +590,6 @@ function App() {
           });
           realtimeSubscriptions.current.clear();
 
-          // Navigate to landing page
           navigate('/', { replace: true });
         }
       }
@@ -617,7 +598,6 @@ function App() {
     return () => {
       mounted = false;
       subscription.unsubscribe();
-      // Clear any pending timeouts
       pendingUpdates.current.forEach(timeout => clearTimeout(timeout));
       pendingUpdates.current.clear();
     };
@@ -693,17 +673,14 @@ function App() {
     }
   }, [soundEnabled, snoozedUntil, topics, addToast]);
 
-  // In src/App.tsx
-
-  // OneSignal Initialization - Handles login and state persistence
+  // OneSignal Initialization
   useEffect(() => {
     if (!session || authLoading) {
       return;
     }
     
-    // This flag prevents re-initialization within the same session
     if (oneSignalInitialized.current) {
-        return;
+      return;
     }
 
     const initOneSignal = async () => {
@@ -715,14 +692,12 @@ function App() {
         console.log('🔔 Initializing OneSignal...');
         
         await oneSignalService.initialize();
-
-        // --- FIX: Log user into OneSignal for persistence ---
+        
         try {
           console.log(`🔔 Logging into OneSignal with external user ID: ${session.user.id}`);
           await oneSignalService.login(session.user.id);
         } catch (error) {
-           console.error('❌ OneSignal login failed:', error);
-           // Non-fatal, proceed with initialization
+          console.error('❌ OneSignal login failed:', error);
         }
         
         const isSubscribed = await oneSignalService.isSubscribed();
@@ -734,8 +709,6 @@ function App() {
           setIsPushEnabled(subscribed);
         });
 
-        // The setup for foreground notifications is now more robust.
-        // I've passed the handleNewNotification callback directly.
         oneSignalService.setupForegroundNotifications(handleNewNotification);
         
         oneSignalInitialized.current = true;
@@ -753,7 +726,6 @@ function App() {
 
   }, [session, authLoading, oneSignalService, handleNewNotification]);
 
-
   const updateNotification = useCallback(async (notificationId: string, updates: NotificationUpdatePayload) => {
     console.log('🔧 Updating notification:', { notificationId, updates });
     
@@ -763,14 +735,12 @@ function App() {
       return;
     }
     
-    // Cancel any pending update for this notification
     const existingTimeout = pendingUpdates.current.get(notificationId);
     if (existingTimeout) {
       clearTimeout(existingTimeout);
       pendingUpdates.current.delete(notificationId);
     }
     
-    // Optimistic update
     setNotifications(prev => prev.map(n => {
       if (n.id === notificationId) {
         console.log('⚡ Optimistic update applied:', { 
@@ -788,12 +758,10 @@ function App() {
       return n;
     }));
     
-    // Debounce database updates
     const updateTimeout = setTimeout(async () => {
       try {
         console.log('🔧 Executing database update for notification:', notificationId);
         
-        // Verify notification exists before updating
         const { data: existingNotification, error: checkError } = await supabase
           .from('notifications')
           .select('id')
@@ -803,7 +771,6 @@ function App() {
         if (checkError) {
           if (checkError.code === 'PGRST116') {
             console.error('❌ Notification not found in database:', notificationId);
-            // Revert optimistic update
             setNotifications(prev => prev.map(n => {
               if (n.id === notificationId) {
                 return originalNotification;
@@ -817,7 +784,6 @@ function App() {
         
         if (!existingNotification) {
           console.error('❌ Notification does not exist in database:', notificationId);
-          // Revert optimistic update
           setNotifications(prev => prev.map(n => {
             if (n.id === notificationId) {
               return originalNotification;
@@ -839,15 +805,12 @@ function App() {
         
         if (error) {
           console.error("❌ Database update failed, reverting optimistic update:", error);
-          
-          // Revert optimistic update
           setNotifications(prev => prev.map(n => {
             if (n.id === notificationId) {
               return originalNotification;
             }
             return n;
           }));
-          
           throw error;
         }
         
@@ -859,28 +822,26 @@ function App() {
       } finally {
         pendingUpdates.current.delete(notificationId);
       }
-    }, 500); // 500ms debounce
+    }, 500);
     
     pendingUpdates.current.set(notificationId, updateTimeout);
   }, [notifications]);
 
-  // Data Fetching and Realtime Subscriptions - Only when session exists
+  // Data Fetching and Realtime Subscriptions
   useEffect(() => {
-    if (!session || dataFetched.current || authLoading) {
+    if (!session || dataFetched.current || authLoading || isFetching.current) {
       return;
     }
-    
+
+    isFetching.current = true;
     let mounted = true;
-    
+
     const fetchInitialData = async () => {
       try {
         console.log('📊 Fetching initial data for user:', session.user.id);
         
-        // Fetch profile
-        if (mounted) {
-          setProfileLoading(true);
-          setProfileError(null);
-        }
+        setProfileLoading(true);
+        setProfileError(null);
 
         const { data: profileData, error: profileFetchError } = await supabase
           .from('profiles')
@@ -896,13 +857,12 @@ function App() {
           } else if (profileData) {
             setProfile(profileData as Profile);
           } else {
-            // This handles the case where the request succeeds but no profile is found
             setProfileError('Your user profile could not be found.');
             setProfile(null);
           }
           setProfileLoading(false);
         }
-        // Fetch notifications
+
         const { data: notificationsData, error: notificationsError } = await supabase
           .from('notifications')
           .select('*')
@@ -918,7 +878,6 @@ function App() {
           const notificationIds = notificationsData.map(n => n.id);
           const commentsByNotificationId = new Map<string, CommentFromDB[]>();
 
-          // Fetch comments for notifications
           if (notificationIds.length > 0) {
             const { data: commentsData, error: commentsError } = await supabase
               .from('comments')
@@ -953,7 +912,6 @@ function App() {
           setNotifications([]);
         }
 
-        // Fetch topics and subscriptions
         const [topicsResult, subscriptionsResult] = await Promise.all([
           supabase.from('topics').select('*').order('name'),
           supabase.from('topic_subscriptions').select('*').eq('user_id', session.user.id)
@@ -979,18 +937,18 @@ function App() {
           console.log('✅ Topics fetched:', mergedTopics.length, 'subscriptions:', subscribedTopicIds.size);
           setTopics(mergedTopics);
         }
-        // Fetch teams
+
         const { data: teamsData, error: teamsError } = await supabase
-        .from('teams')
-        .select('*');
+          .from('teams')
+          .select('*');
 
         if (teamsError) {
-        console.error('❌ Error fetching teams:', teamsError);
-        // You might want to throw the error or handle it appropriately
+          console.error('❌ Error fetching teams:', teamsError);
         } else if (teamsData && mounted) {
-        console.log('✅ Teams fetched:', teamsData.length);
-        setTeams(teamsData);
+          console.log('✅ Teams fetched:', teamsData.length);
+          setTeams(teamsData);
         }
+
         dataFetched.current = true;
         console.log('✅ Initial data fetch completed successfully');
 
@@ -1005,31 +963,26 @@ function App() {
       }
     };
 
-    // Start data fetching, then setup realtime
     fetchInitialData()
       .then(() => {
         if (mounted && dataFetched.current) {
-          // Setup realtime with slight delay
-          setTimeout(() => {
-            if (mounted) {
-              setupRealtimeSubscriptions();
-            }
-          }, 1000);
+          setupRealtimeSubscriptions(); // Call directly, no setTimeout
         }
       })
       .catch(error => {
         console.error('❌ Failed to fetch initial data:', error);
+      })
+      .finally(() => {
+        isFetching.current = false;
       });
 
     return () => {
       console.log('🧹 Cleaning up data fetching effect...');
       mounted = false;
       
-      // Clear pending updates
       pendingUpdates.current.forEach(timeout => clearTimeout(timeout));
       pendingUpdates.current.clear();
       
-      // Cleanup realtime subscriptions
       const cleanup = async () => {
         const channelPromises = Array.from(realtimeSubscriptions.current.values()).map(async (channel) => {
           try {
@@ -1080,6 +1033,7 @@ function App() {
 
     fetchSites();
   }, [session]);
+
   useEffect(() => {
     if (!session) return;
 
@@ -1113,39 +1067,41 @@ function App() {
       supabase.removeChannel(sitesSubscription);
     };
   }, [session]);
+
   useEffect(() => {
     const fetchUserNames = async () => {
-        const userIds = new Set<string>();
-        notifications.forEach(n => {
-            (n.comments || []).forEach(c => {
-                if (c.user_id) {
-                    userIds.add(c.user_id);
-                }
-            });
+      const userIds = new Set<string>();
+      notifications.forEach(n => {
+        (n.comments || []).forEach(c => {
+          if (c.user_id) {
+            userIds.add(c.user_id);
+          }
         });
+      });
 
-        if (userIds.size > 0) {
-            const { data, error } = await supabase
-                .from('profiles')
-                .select('id, full_name')
-                .in('id', Array.from(userIds));
+      if (userIds.size > 0) {
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('id, full_name')
+          .in('id', Array.from(userIds));
 
-            if (error) {
-                console.error('Error fetching user names:', error);
-            } else {
-                const names = new Map<string, string>();
-                data.forEach(profile => {
-                    names.set(profile.id, profile.full_name || 'Unknown User');
-                });
-                setUserNames(names);
-            }
+        if (error) {
+          console.error('Error fetching user names:', error);
+        } else {
+          const names = new Map<string, string>();
+          data.forEach(profile => {
+            names.set(profile.id, profile.full_name || 'Unknown User');
+          });
+          setUserNames(names);
         }
+      }
     };
 
     if (notifications.length > 0) {
-        fetchUserNames();
+      fetchUserNames();
     }
   }, [notifications]);
+
   const subscribeToPush = useCallback(async () => {
     if (!session) return;
     setIsPushLoading(true);
@@ -1163,7 +1119,6 @@ function App() {
       await oneSignalService.savePlayerIdToDatabase(session.user.id);
       console.log('🔔 Player ID saved to database');
       
-      // Wait for registration to complete
       await new Promise(resolve => setTimeout(resolve, 2000));
       
       const subscribedTopics = topics.filter(t => t.subscribed);
@@ -1241,8 +1196,6 @@ function App() {
     setTheme(prevTheme => (prevTheme === 'light' ? 'dark' : 'light'));
   }, []);
 
-  // In src/App.tsx
-
   const handleLogout = useCallback(async () => {
     console.log('➡️ Starting logout process...');
     
@@ -1253,7 +1206,6 @@ function App() {
       console.error('❌ Error logging out from OneSignal (non-fatal):', error);
     }
     
-    // This will trigger the onAuthStateChange listener below
     const { error } = await supabase.auth.signOut();
   
     if (error) {
@@ -1262,10 +1214,9 @@ function App() {
     }
   }, [oneSignalService]);
 
-
   const handleNavigate = useCallback((page: string) => {
     if (session) {
-      navigate(`/${page}`); // Use navigate to change the URL
+      navigate(`/${page}`);
     }
     setIsSidebarOpen(false);
   }, [session, navigate]);
@@ -1327,8 +1278,6 @@ function App() {
     console.log('💬 Inserting comment into database:', { notificationId, text });
 
     try {
-      // The insert call will trigger the realtime subscription, which updates the UI.
-      // We no longer need to manually update the state here, which avoids the race condition.
       const { error, data } = await supabase
         .from('comments')
         .insert([{
@@ -1336,7 +1285,7 @@ function App() {
           text: text.trim(),
           user_id: session.user.id
         }])
-        .select('id') // Only select the ID, as the rest is handled by the subscription
+        .select('id')
         .single();
 
       if (error) {
@@ -1348,12 +1297,10 @@ function App() {
       console.log('✅ Comment inserted successfully:', data.id);
     } catch (error) {
       console.error("❌ Failed to add comment:", error);
-      // Re-throw to allow component-level error handling if needed
       throw error;
     }
   }, [session]);
 
-  // Replace the existing handleAddTopic function with this one
   const handleAddTopic = useCallback(async (name: string, description: string, team_id: string | null) => {
     try {
       const { error } = await supabase.from('topics').insert([{ name, description, team_id }]);
@@ -1369,13 +1316,11 @@ function App() {
     }
   }, []);
 
-  
   const handleToggleSubscription = useCallback(async (topic: Topic) => {
     if (!session) return;
 
     try {
       if (topic.subscribed && topic.subscription_id) {
-        // --- Unsubscribe ---
         const { error } = await supabase.from('topic_subscriptions').delete().eq('id', topic.subscription_id);
         
         if (error) {
@@ -1385,23 +1330,19 @@ function App() {
         }
         
         console.log(`✅ Unsubscribed from ${topic.name}`);
-        
-        // --- FIX: Update local state on success ---
         setTopics(prev => prev.map(t => 
           t.id === topic.id ? { ...t, subscribed: false, subscription_id: undefined } : t
         ));
 
-        // Update OneSignal tag (fire and forget)
         if (isPushEnabled) {
           oneSignalService.removeUserTags([`topic_${topic.id}`]).catch(e => console.warn('Failed to remove OneSignal tag', e));
         }
 
       } else {
-        // --- Subscribe ---
         const { data, error } = await supabase
           .from('topic_subscriptions')
           .insert([{ user_id: session.user.id, topic_id: topic.id }])
-          .select() // We need the new subscription ID
+          .select()
           .single();
           
         if (error) {
@@ -1411,13 +1352,10 @@ function App() {
         }
 
         console.log(`✅ Subscribed to ${topic.name}`);
-        
-        // --- FIX: Update local state on success ---
         setTopics(prev => prev.map(t => 
           t.id === topic.id ? { ...t, subscribed: true, subscription_id: data.id } : t
         ));
         
-        // Update OneSignal tag (fire and forget)
         if (isPushEnabled) {
           oneSignalService.setUserTags({ [`topic_${topic.id}`]: '1' }).catch(e => console.warn('Failed to set OneSignal tag', e));
         }
@@ -1428,21 +1366,16 @@ function App() {
     }
   }, [session, isPushEnabled]);
 
-
   const handleDeleteTopic = useCallback(async (topic: Topic) => {
     if (!session) return;
     try {
-      // First delete subscriptions related to the topic to avoid foreign key issues
       await supabase.from('topic_subscriptions').delete().eq('topic_id', topic.id);
-
-      // Then delete the topic itself
       const { error } = await supabase.from('topics').delete().eq('id', topic.id);
       if (error) {
         console.error("Error deleting topic:", error);
         alert(`Failed to delete topic: ${error.message}`);
       } else {
         console.log('✅ Topic deleted successfully');
-        // Update the UI
         setTopics(prev => prev.filter(t => t.id !== topic.id));
       }
     } catch (error) {
@@ -1450,6 +1383,7 @@ function App() {
       alert('Failed to delete topic. Please try again.');
     }
   }, [session]);
+
   const handleUpdateTopicTeam = useCallback(async (topicId: string, teamId: string | null) => {
     try {
       const { error } = await supabase
@@ -1462,7 +1396,6 @@ function App() {
         alert(`Failed to update topic team: ${error.message}`);
       } else {
         console.log(`✅ Topic ${topicId} assigned to team ${teamId}`);
-        // Refresh topics to reflect the change
         const { data, error: refreshError } = await supabase.from('topics').select('*').order('name');
         if (refreshError) {
           console.error('Error refetching topics:', refreshError);
@@ -1480,18 +1413,16 @@ function App() {
       alert('Failed to update topic team. Please try again.');
     }
   }, [topics]);
-  
+
   const handleClearLogs = useCallback(async () => {
     if (!session) return;
     try {
       console.log('🔥 Clearing all notifications...');
       
-      // This will delete all notifications. Ensure you have cascading deletes
-      // set up in your Supabase database for related comments, or delete them first.
       const { error } = await supabase
         .from('notifications')
         .delete()
-        .neq('id', '00000000-0000-0000-0000-000000000000'); // Condition to delete all rows
+        .neq('id', '00000000-0000-0000-0000-000000000000');
 
       if (error) {
         console.error("❌ Error clearing notifications:", error);
@@ -1500,7 +1431,6 @@ function App() {
       }
 
       console.log('✅ All notifications cleared successfully');
-      // Update the UI
       setNotifications([]);
       setToasts([]);
 
@@ -1512,7 +1442,6 @@ function App() {
 
   const themeContextValue = useMemo(() => ({ theme, toggleTheme }), [theme, toggleTheme]);
 
-  // Show loading while auth is initializing
   if (authLoading) {
     return (
       <ThemeContext.Provider value={themeContextValue}>
@@ -1739,7 +1668,6 @@ function App() {
                     );
                   }
 
-                  // Fallback if session is lost
                   return <SupabaseLoginPage />;
                 })()}/>
               </Routes>
@@ -1761,7 +1689,6 @@ function App() {
         </ErrorBoundary>
       </div>
       
-      {/* Toast Notifications */}
       <div aria-live="assertive" className="fixed inset-0 flex items-end px-4 py-6 pointer-events-none sm:p-6 sm:items-start z-[100]">
         <div className="w-full flex flex-col items-center space-y-4 sm:items-end">
           {toasts.map(toast => (
