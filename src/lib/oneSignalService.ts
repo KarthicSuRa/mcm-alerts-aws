@@ -167,15 +167,52 @@ export class OneSignalService {
     }
   }
 
+  public async getPlayerId(): Promise<string | null> {
+    if (!this.initialized) {
+      await this.initialize();
+      if (!this.initialized) {
+        console.warn('⚠️ OneSignal not initialized, cannot get player ID.');
+        return null;
+      }
+    }
+    
+    const isSubscribed = await this.isSubscribed();
+    if (!isSubscribed) {
+      console.log('🔔 User is not subscribed, so no player ID is available.');
+      return null;
+    }
+
+    const playerId = window.OneSignal.User.PushSubscription.id;
+    if (playerId) {
+      console.log('🔔 Player ID found:', playerId);
+      return playerId;
+    }
+
+    console.warn('⚠️ Could not retrieve player ID even though user is subscribed.');
+    return null;
+  }
+
   public async subscribe(): Promise<string | null> {
     if (!this.initialized) {
       await this.initialize();
     }
     try {
+      if (await this.isSubscribed()) {
+        console.log('🔔 User is already subscribed.');
+        return this.getPlayerId();
+      }
+
       await window.OneSignal.Slidedown.promptPush();
-      const playerId = await window.OneSignal.getUserId();
-      console.log('🔔 Successfully subscribed, player ID:', playerId);
-      return playerId;
+
+      const subscribed = await this.isSubscribed();
+      if (subscribed) {
+        const playerId = await this.getPlayerId();
+        console.log('🔔 Successfully subscribed, player ID:', playerId);
+        return playerId;
+      } else {
+        console.log('🔔 User chose not to subscribe or the subscription failed.');
+        return null;
+      }
     } catch (error) {
       console.error('❌ Failed to subscribe to push notifications:', error);
       throw error;
@@ -276,7 +313,7 @@ export class OneSignalService {
       await this.initialize();
     }
     try {
-      const playerId = await window.OneSignal.getUserId();
+      const playerId = await this.getPlayerId();
       if (!playerId) {
         console.warn('🔔 No player ID available to save to database');
         return;
@@ -320,11 +357,11 @@ export class OneSignalService {
       await this.initialize();
     }
     try {
-      const userId = await window.OneSignal.getUserId();
-      const isSubscribed = await window.OneSignal.User.PushSubscription.optedIn;
+      const playerId = await this.getPlayerId();
+      const isSubscribed = await this.isSubscribed();
       const tags = await window.OneSignal.User.getTags();
       return {
-        userId,
+        userId: playerId,
         isSubscribed,
         tags,
         initialized: this.initialized,
