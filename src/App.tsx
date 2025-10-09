@@ -613,7 +613,11 @@ function App() {
     };
 
     initAndSetupListeners();
-
+    return () => {
+      // This will reset the service when the component unmounts,
+      // preventing the "initializing" state from getting stuck.
+      oneSignalService.reset(); 
+    };
   }, [session, authLoading]);
 
   const updateNotification = useCallback(async (notificationId: string, updates: NotificationUpdatePayload) => {
