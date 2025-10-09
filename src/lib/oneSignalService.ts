@@ -96,21 +96,25 @@ export class OneSignalService {
   }
 
   private async waitForOneSignal(): Promise<void> {
-    return new Promise((resolve) => {
-      if (window.OneSignal?.isSdkInitialized()) {
-        resolve();
-      } else {
-        const checkInterval = setInterval(() => {
-          if (window.OneSignal?.isSdkInitialized()) {
-            clearInterval(checkInterval);
-            resolve();
+    return new Promise((resolve, reject) => {
+      const maxAttempts = 50; // 50 * 100ms = 5 seconds
+      let attempts = 0;
+
+      const check = () => {
+        // The correct check is to see if the 'init' function is available.
+        if (window.OneSignal && typeof window.OneSignal.init === 'function') {
+          console.log('✅ OneSignal SDK script loaded.');
+          resolve();
+        } else {
+          attempts++;
+          if (attempts < maxAttempts) {
+            setTimeout(check, 100);
+          } else {
+            reject(new Error('OneSignal SDK failed to load in time.'));
           }
-        }, 100);
-        setTimeout(() => {
-          clearInterval(checkInterval);
-          resolve(); // Resolve anyway to avoid getting stuck
-        }, 5000);
-      }
+        }
+      };
+      check();
     });
   }
 
@@ -177,7 +181,6 @@ export class OneSignalService {
 
     console.log('🔔 Starting subscription flow...');
 
-    // The robust way: Listen for the subscription change event.
     const subscriptionPromise = new Promise<string | null>((resolve) => {
       this.onSubscriptionChange(async (isNowSubscribed) => {
         if (isNowSubscribed) {
@@ -191,10 +194,8 @@ export class OneSignalService {
       });
     });
 
-    // Trigger the prompt that asks the user for permission.
     await window.OneSignal.Slidedown.promptPush();
 
-    // Wait for the event listener to resolve the promise.
     return subscriptionPromise;
   }
 
