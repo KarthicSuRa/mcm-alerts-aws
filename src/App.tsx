@@ -582,7 +582,6 @@ function App() {
 
     const initAndSetupListeners = async () => {
       try {
-        setIsPushLoading(true);
         console.log('🔔 Initializing OneSignal...');
 
         await oneSignalService.initialize();
@@ -609,7 +608,7 @@ function App() {
         console.error('❌ Failed to initialize OneSignal:', error);
         alert('Failed to set up push notifications. Please refresh the page and try again.');
       } finally {
-        setIsPushLoading(false);
+        
       }
     };
 
