@@ -30,14 +30,9 @@ export class OneSignalService {
   }
 
   initialize(): Promise<void> {
-    // If the initialization promise already exists, just return it.
-    // This handles all concurrent calls from React's Strict Mode,
-    // ensuring they all wait for the same single process.
     if (this.initPromise) {
       return this.initPromise;
     }
-
-    // Create the initialization promise. This will only happen once.
     console.log('🔔 Creating OneSignal initialization promise...');
     this.initPromise = this.doInitialize();
     return this.initPromise;
@@ -50,34 +45,24 @@ export class OneSignalService {
 
     if (!this.appId || !this.isPushSupported()) {
       console.warn('🔔 OneSignal prerequisites not met (no App ID, or push not supported).');
-      // Mark as initialized to prevent future attempts this session.
       this.initialized = true; 
       return;
     }
 
-    // Self-contained retry loop.
     for (let attempt = 1; attempt <= this.maxRetries; attempt++) {
       try {
         await this.waitForOneSignal();
-
         console.log(`🔔 Initializing OneSignal with app ID: ${this.appId} (Attempt ${attempt})`);
-
-        // The OneSignal SDK's init function is idempotent, meaning it's safe
-        // to call multiple times, but we add our own layer of protection.
         await window.OneSignal.init({
           appId: this.appId,
           allowLocalhostAsSecureOrigin: true,
           serviceWorkerParam: { scope: '/' },
           serviceWorkerPath: '/sw.js',
-          notifyButton: {
-            enable: false,
-          },
+          notifyButton: { enable: false },
           persistNotification: true,
           autoRegister: false,
           safari_web_id: import.meta.env.VITE_SAFARI_WEB_ID,
-          welcomeNotification: {
-            disable: true,
-          },
+          welcomeNotification: { disable: true },
           promptOptions: {
             slidedown: {
               prompts: [
@@ -97,17 +82,14 @@ export class OneSignalService {
 
         this.initialized = true;
         console.log('✅ OneSignal initialized successfully');
-        return; // <-- Success! Exit the loop and resolve the promise.
+        return;
 
       } catch (error) {
         console.error(`❌ Failed to initialize OneSignal on attempt ${attempt}:`, error);
-
         if (attempt < this.maxRetries) {
-          await new Promise(resolve => setTimeout(resolve, 2000)); // Wait before retrying
+          await new Promise(resolve => setTimeout(resolve, 2000));
         } else {
-          console.error('❌ OneSignal initialization failed after all retries. Push notifications will be disabled.');
-          // Do not re-throw, to avoid crashing the application.
-          // The initPromise will resolve, but `this.initialized` will remain false.
+          console.error('❌ OneSignal initialization failed after all retries.');
         }
       }
     }
@@ -115,18 +97,18 @@ export class OneSignalService {
 
   private async waitForOneSignal(): Promise<void> {
     return new Promise((resolve) => {
-      if ('OneSignal' in window) {
+      if (window.OneSignal?.isSdkInitialized()) {
         resolve();
       } else {
         const checkInterval = setInterval(() => {
-          if ('OneSignal' in window) {
+          if (window.OneSignal?.isSdkInitialized()) {
             clearInterval(checkInterval);
             resolve();
           }
         }, 100);
         setTimeout(() => {
           clearInterval(checkInterval);
-          resolve();
+          resolve(); // Resolve anyway to avoid getting stuck
         }, 5000);
       }
     });
@@ -134,9 +116,7 @@ export class OneSignalService {
 
   public async login(externalUserId: string): Promise<void> {
     if (!this.initialized) {
-      // Wait for initialization to complete before trying to log in.
       await this.initialize();
-      // If it's still not initialized after trying, we can't proceed.
       if (!this.initialized) {
         console.error('❌ OneSignal could not be initialized. Aborting login.');
         return;
@@ -154,7 +134,6 @@ export class OneSignalService {
 
   public async logout(): Promise<void> {
     if (!this.initialized) {
-      // No need to do anything if the service wasn't even running.
       return;
     }
     try {
@@ -169,55 +148,56 @@ export class OneSignalService {
 
   public async getPlayerId(): Promise<string | null> {
     if (!this.initialized) {
-      await this.initialize();
-      if (!this.initialized) {
         console.warn('⚠️ OneSignal not initialized, cannot get player ID.');
         return null;
-      }
     }
-    
-    const isSubscribed = await this.isSubscribed();
-    if (!isSubscribed) {
-      console.log('🔔 User is not subscribed, so no player ID is available.');
-      return null;
-    }
-
     const playerId = window.OneSignal.User.PushSubscription.id;
     if (playerId) {
       console.log('🔔 Player ID found:', playerId);
       return playerId;
     }
-
-    console.warn('⚠️ Could not retrieve player ID even though user is subscribed.');
+    console.warn('⚠️ Could not retrieve player ID.');
     return null;
   }
 
   public async subscribe(): Promise<string | null> {
     if (!this.initialized) {
       await this.initialize();
-    }
-    try {
-      if (await this.isSubscribed()) {
-        console.log('🔔 User is already subscribed.');
-        return this.getPlayerId();
-      }
-
-      await window.OneSignal.Slidedown.promptPush();
-
-      const subscribed = await this.isSubscribed();
-      if (subscribed) {
-        const playerId = await this.getPlayerId();
-        console.log('🔔 Successfully subscribed, player ID:', playerId);
-        return playerId;
-      } else {
-        console.log('🔔 User chose not to subscribe or the subscription failed.');
+      if (!this.initialized) {
+        console.error('❌ Cannot subscribe, OneSignal not initialized.');
         return null;
       }
-    } catch (error) {
-      console.error('❌ Failed to subscribe to push notifications:', error);
-      throw error;
     }
+
+    const isSubscribed = await this.isSubscribed();
+    if (isSubscribed) {
+      console.log('🔔 User is already subscribed.');
+      return this.getPlayerId();
+    }
+
+    console.log('🔔 Starting subscription flow...');
+
+    // The robust way: Listen for the subscription change event.
+    const subscriptionPromise = new Promise<string | null>((resolve) => {
+      this.onSubscriptionChange(async (isNowSubscribed) => {
+        if (isNowSubscribed) {
+          const playerId = await this.getPlayerId();
+          console.log('✅ Subscription successful. Player ID:', playerId);
+          resolve(playerId);
+        } else {
+          console.log('🔔 User chose not to subscribe or the process was cancelled.');
+          resolve(null);
+        }
+      });
+    });
+
+    // Trigger the prompt that asks the user for permission.
+    await window.OneSignal.Slidedown.promptPush();
+
+    // Wait for the event listener to resolve the promise.
+    return subscriptionPromise;
   }
+
 
   public async unsubscribe(): Promise<void> {
     if (!this.initialized) {
@@ -235,6 +215,7 @@ export class OneSignalService {
   public async isSubscribed(): Promise<boolean> {
     if (!this.initialized) {
       await this.initialize();
+      if (!this.initialized) return false;
     }
     try {
       const isSubscribed = await window.OneSignal.User.PushSubscription.optedIn;
@@ -248,6 +229,7 @@ export class OneSignalService {
   public async setUserTags(tags: Record<string, string>): Promise<void> {
     if (!this.initialized) {
       await this.initialize();
+      if (!this.initialized) return;
     }
     try {
       await window.OneSignal.User.addTags(tags);
@@ -261,6 +243,7 @@ export class OneSignalService {
   public async removeUserTags(tags: string[]): Promise<void> {
     if (!this.initialized) {
       await this.initialize();
+      if (!this.initialized) return;
     }
     try {
       await window.OneSignal.User.removeTags(tags);
@@ -273,16 +256,12 @@ export class OneSignalService {
 
   public setupForegroundNotifications(handler: (notification: any) => void): void {
     if (!this.initialized) {
-      console.warn('🔔 OneSignal not initialized, cannot setup foreground notifications');
       return;
     }
     try {
-      // CORRECTED API: The event is 'foregroundWillDisplay'
       window.OneSignal.Notifications.addEventListener('foregroundWillDisplay', (event: any) => {
         console.log('🔔 Foreground notification received:', event);
-        // It's best practice to call preventDefault to stop OneSignal's default rendering
         event.preventDefault();
-        // Pass the notification data to the handler provided by App.tsx
         handler(event.notification);
       });
       console.log('✅ Foreground notification handler set up');
@@ -293,14 +272,11 @@ export class OneSignalService {
 
   public onSubscriptionChange(handler: (isSubscribed: boolean) => void): void {
     if (!this.initialized) {
-      console.warn('🔔 OneSignal not initialized, cannot set up subscription change handler');
       return;
     }
     try {
-      // CORRECTED API: The event listener is on 'User.PushSubscription', not 'Notifications'
       window.OneSignal.User.PushSubscription.addEventListener('change', (change: any) => {
         console.log('🔔 Push subscription state changed:', change);
-        // The new state is in `change.current.optedIn`
         handler(!!change.current.optedIn);
       });
       console.log('✅ Subscription change handler set up');
@@ -311,6 +287,7 @@ export class OneSignalService {
   public async savePlayerIdToDatabase(userId: string): Promise<void> {
     if (!this.initialized) {
       await this.initialize();
+      if (!this.initialized) return;
     }
     try {
       const playerId = await this.getPlayerId();
@@ -355,6 +332,7 @@ export class OneSignalService {
   public async getDebugInfo(): Promise<any> {
     if (!this.initialized) {
       await this.initialize();
+      if (!this.initialized) return {};
     }
     try {
       const playerId = await this.getPlayerId();
