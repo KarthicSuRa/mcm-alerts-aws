@@ -238,6 +238,11 @@ function App() {
     }
   }, [soundEnabled, snoozedUntil, topics, addToast]);
 
+  const handleNewNotificationRef = useRef(handleNewNotification);
+  useEffect(() => {
+    handleNewNotificationRef.current = handleNewNotification;
+  }, [handleNewNotification]);
+
   const setupRealtimeSubscriptions = useCallback(() => {
     if (!session || !dataFetched.current) {
       console.log('⏸️ Skipping realtime setup - not ready', { session: !!session, dataFetched: dataFetched.current });
@@ -572,46 +577,74 @@ function App() {
     };
   }, [navigate]);
 
-  // OneSignal Initialization
+// OneSignal Initialization and Subscription Change Handler
   useEffect(() => {
     if (!session || authLoading || oneSignalInitialized.current) {
-      console.log('⏸️ Skipping OneSignal initialization', { session: !!session, authLoading, initialized: oneSignalInitialized.current });
       return;
     }
 
-    const initOneSignal = async () => {
+    const initAndSetupListeners = async () => {
       try {
         setIsPushLoading(true);
         console.log('🔔 Initializing OneSignal...');
-        
+
         await oneSignalService.initialize();
-        
         console.log(`🔔 Logging into OneSignal with external user ID: ${session.user.id}`);
         await oneSignalService.login(session.user.id);
-        
+
         const isSubscribed = await oneSignalService.isSubscribed();
-        console.log('🔔 OneSignal subscription status on load:', isSubscribed);
+        console.log('🔔 Initial OneSignal subscription state:', isSubscribed);
         setIsPushEnabled(isSubscribed);
         
-        oneSignalService.onSubscriptionChange((subscribed: boolean) => {
-          console.log('🔔 OneSignal subscription changed:', subscribed);
+        oneSignalService.onSubscriptionChange(async (subscribed: boolean) => {
+          console.log('🔔 Subscription state changed to:', subscribed);
           setIsPushEnabled(subscribed);
+          setIsPushLoading(true);
+
+          try {
+            if (subscribed) {
+              await oneSignalService.savePlayerIdToDatabase(session.user.id);
+              console.log('✅ Player ID saved to DB.');
+
+              const subscribedTopics = topics.filter(t => t.subscribed);
+              if (subscribedTopics.length > 0) {
+                console.log('🏷️ Applying tags for subscribed topics...');
+                const tags: Record<string, string> = {};
+                subscribedTopics.forEach(topic => {
+                  tags[`topic_${topic.id}`] = '1';
+                });
+                await oneSignalService.setUserTags(tags);
+                console.log('✅ Tags applied successfully.');
+              }
+            } else {
+              await oneSignalService.removePlayerIdFromDatabase(session.user.id);
+              console.log('🗑️ Player ID removed from DB.');
+            }
+          } catch (error) {
+            console.error('❌ Failed to sync subscription state with database:', error);
+            alert('There was an error updating your push notification settings. Please try again.');
+          } finally {
+            setIsPushLoading(false);
+          }
         });
 
-        oneSignalService.setupForegroundNotifications(handleNewNotification);
+        oneSignalService.setupForegroundNotifications((notification) => handleNewNotificationRef.current(notification));
         
         oneSignalInitialized.current = true;
-        console.log('✅ OneSignal initialization completed');
+        console.log('✅ OneSignal initialization and listeners setup complete.');
 
       } catch (error) {
         console.error('❌ Failed to initialize OneSignal:', error);
+        alert('Failed to set up push notifications. Please refresh the page and try again.');
       } finally {
         setIsPushLoading(false);
       }
     };
 
-    initOneSignal();
-  }, [session, authLoading, oneSignalService, handleNewNotification]);
+    initAndSetupListeners();
+
+  }, [session, authLoading]);
+
 
   const updateNotification = useCallback(async (notificationId: string, updates: NotificationUpdatePayload) => {
     console.log('🔧 Updating notification:', { notificationId, updates });
@@ -969,94 +1002,28 @@ function App() {
   }, [notifications]);
 
   const subscribeToPush = useCallback(async () => {
-    if (!session) return;
-    setIsPushLoading(true);
+      setIsPushLoading(true);
+      try {
+        // This just kicks off the process. The `onSubscriptionChange` listener will handle the result.
+        await oneSignalService.subscribe();
+      } catch (error) {
+        console.error('🔔 Failed to start subscription process:', error);
+        alert('Could not start the push notification setup. Please check your browser settings and try again.');
+        setIsPushLoading(false); // Stop loading on failure
+      }
+    }, [oneSignalService]);
     
-    
-    try {
-    console.log('🔔 Starting push subscription process...');
-    
-    
-    const playerId = await oneSignalService.subscribe();
-    if (!playerId) {
-    throw new Error('Failed to get player ID from OneSignal');
-    }
-    
-    
-    console.log('🔔 OneSignal subscription successful, player ID:', playerId);
-    
-    
-    await oneSignalService.savePlayerIdToDatabase(session.user.id);
-    console.log('🔔 Player ID saved to database');
-    
-    
-    await new Promise(resolve => setTimeout(resolve, 2000));
-    
-    
-    const subscribedTopics = topics.filter(t => t.subscribed);
-    if (subscribedTopics.length > 0) {
-    console.log('🔔 Setting tags for subscribed topics:', subscribedTopics.map(t => t.name));
-    
-    
-    try {
-    const tags: Record<string, string> = {};
-    subscribedTopics.forEach(topic => {
-    tags[`topic_${topic.id}`] = '1';
-    });
-    
-    
-    console.log('🔔 Tags to set:', tags);
-    await oneSignalService.setUserTags(tags);
-    console.log('🔔 Tags set successfully');
-    } catch (tagError) {
-    console.error('🔔 Failed to set tags (non-critical):', tagError);
-    }
-    }
-    
-    
-    console.log('🔔 Push notifications enabled successfully');
-    
-    
-    } catch (error) {
-    console.error('🔔 Failed to subscribe to push notifications:', error);
-    
-    
-    let errorMessage = 'Failed to enable push notifications. ';
-    if (error instanceof Error) {
-    if (error.message.includes('permission')) {
-    errorMessage += 'Please allow notifications in your browser.';
-    } else if (error.message.includes('player ID')) {
-    errorMessage += 'OneSignal registration failed. Please try again.';
-    } else if (error.message.includes('not supported')) {
-    errorMessage += 'Your browser does not support push notifications.';
-    } else {
-    errorMessage += 'Please try again or check your browser settings.';
-    }
-    }
-    
-    
-    alert(errorMessage);
-    } finally {
-    setIsPushLoading(false);
-    }
-    }, [session, topics]);
-    
-    
-    const unsubscribeFromPush = useCallback(async () => {
-    if (!session) return;
-    setIsPushLoading(true);
-    
-    
-    try {
-    await oneSignalService.unsubscribe();
-    await oneSignalService.removePlayerIdFromDatabase(session.user.id);
-    console.log('🔔 Push notifications disabled successfully');
-    } catch (error) {
-    console.error('Failed to unsubscribe from push:', error);
-    } finally {
-    setIsPushLoading(false);
-    }
-    }, [session]);
+  const unsubscribeFromPush = useCallback(async () => {
+      setIsPushLoading(true);
+      try {
+        // This just kicks off the process. The `onSubscriptionChange` listener will handle the result.
+        await oneSignalService.unsubscribe();
+      } catch (error) {
+        console.error('🔔 Failed to start unsubscription process:', error);
+        alert('An error occurred while trying to disable push notifications. Please try again.');
+        setIsPushLoading(false); // Stop loading on failure
+      }
+    }, [oneSignalService]);
 
   // Theme effect
   useEffect(() => {
