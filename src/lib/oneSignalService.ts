@@ -65,86 +65,56 @@ export class OneSignalService {
     return this.initPromise;
   }
 
-  private async doInitialize(): Promise<void> {
-    if (this.initializing) return;
-
+  private doInitialize(): Promise<void> {
     this.initializing = true;
+    return new Promise(async (resolve, reject) => {
+        const timeout = setTimeout(() => {
+            this.initializing = false;
+            reject(new Error('OneSignal initialization timed out.'));
+        }, 15000);
 
-    try {
-      await this.waitForOneSignal();
+        try {
+            await this.waitForOneSignal();
 
-      try {
-        if (window.OneSignal?.User?.PushSubscription) {
-          const state = await window.OneSignal.User.PushSubscription.optedIn;
-          console.log('🔔 OneSignal appears to be already initialized, current state:', state);
-          this.initialized = true;
-          return;
+            window.OneSignal.push(() => {
+                window.OneSignal.init({
+                    appId: this.appId,
+                    allowLocalhostAsSecureOrigin: true,
+                    notifyButton: {
+                        enable: false,
+                    },
+                    persistNotification: true,
+                    autoRegister: false,
+                    safari_web_id: import.meta.env.VITE_SAFARI_WEB_ID,
+                    welcomeNotification: {
+                        disable: true,
+                    },
+                });
+
+                window.OneSignal.on('sdkInit', () => {
+                    clearTimeout(timeout);
+                    console.log('✅ OneSignal initialized successfully');
+                    this.initialized = true;
+                    this.initializing = false;
+                    resolve();
+                });
+            });
+        } catch (error) {
+            clearTimeout(timeout);
+            console.error('❌ Failed to initialize OneSignal:', error);
+            this.initializing = false;
+            if (this.retryCount < this.maxRetries) {
+                this.retryCount++;
+                console.log(`🔄 Retrying OneSignal initialization (attempt ${this.retryCount}/${this.maxRetries})`);
+                this.initPromise = null; 
+                this.initialize().then(resolve).catch(reject);
+            } else {
+                reject(new Error('OneSignal initialization failed after all retries'));
+            }
         }
-      } catch (error) {
-        console.log('🔔 OneSignal not yet initialized, proceeding...');
-      }
+    });
+}
 
-      console.log('🔔 Initializing OneSignal with app ID:', this.appId);
-
-      await window.OneSignal.init({
-        appId: this.appId,
-        allowLocalhostAsSecureOrigin: true,
-        serviceWorkerParam: { scope: '/onesignal/' },
-        serviceWorkerPath: 'onesignal/OneSignalSDKWorker.js',
-        notifyButton: {
-          enable: false,
-        },
-        persistNotification: true,
-        autoRegister: false,
-        safari_web_id: import.meta.env.VITE_SAFARI_WEB_ID,
-        welcomeNotification: {
-          disable: true,
-        },
-        promptOptions: {
-          slidedown: {
-            prompts: [
-              {
-                type: 'push',
-                autoPrompt: false,
-                text: {
-                  actionMessage: 'Enable notifications to receive real-time alerts',
-                  acceptButton: 'Allow',
-                  cancelButton: 'No Thanks',
-                },
-              },
-            ],
-          },
-        },
-      });
-
-      this.initialized = true;
-      console.log('✅ OneSignal initialized successfully');
-    } catch (error) {
-      console.error('❌ Failed to initialize OneSignal:', error);
-
-      if (error instanceof Error) {
-        if (error.message.includes('initialized') || error.message.includes('init')) {
-          console.log('🔔 OneSignal may already be initialized, marking as initialized');
-          this.initialized = true;
-          return;
-        }
-      }
-
-      if (this.retryCount < this.maxRetries) {
-        this.retryCount++;
-        this.initializing = false;
-        this.initPromise = null;
-        console.log(`🔄 Retrying OneSignal initialization (attempt ${this.retryCount}/${this.maxRetries})`);
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        return this.initialize();
-      }
-
-      console.error('❌ OneSignal initialization failed after all retries');
-    } finally {
-      this.initializing = false;
-      this.initPromise = null;
-    }
-  }
 
   async login(userId: string): Promise<void> {
     if (!this.initialized) {
@@ -340,7 +310,7 @@ export class OneSignalService {
 
       const checkOneSignal = () => {
         attempts++;
-        if (window.OneSignal && typeof window.OneSignal.init === 'function') {
+        if (window.OneSignal && typeof window.OneSignal.push === 'function') {
           console.log(`✅ OneSignal SDK loaded after ${attempts} attempts`);
           resolve();
         } else if (attempts < maxAttempts) {

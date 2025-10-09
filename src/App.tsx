@@ -241,7 +241,7 @@ function App() {
         });
         
         setTimeout(() => {
-          handleNewNotification(newNotification);
+          handleNewNotificationRef.current?.(newNotification);
         }, 200);
       })
       .on<NotificationFromDB>('postgres_changes', { 
@@ -424,7 +424,7 @@ function App() {
     realtimeSubscriptions.current.set('monitored_sites', sitesChannel);
     
     console.log('✅ All realtime subscriptions set up successfully');
-  }, [session, handleNewNotification, userNames]);
+  }, [session]);
 
   // Dedicated effect for setting up real-time subscriptions
   useEffect(() => {
