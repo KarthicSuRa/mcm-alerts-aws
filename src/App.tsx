@@ -37,6 +37,7 @@ interface Profile {
   id: string;
   username?: string;
   avatar_url?: string;
+  full_name?: string;
 }
 
 function App() {
@@ -63,12 +64,12 @@ function App() {
   const [userNames, setUserNames] = useState<Map<string, string>>(new Map());
   const navigate = useNavigate();
   const location = useLocation();
-
   const oneSignalService = OneSignalService.getInstance();
   const oneSignalInitialized = useRef(false);
   const dataFetched = useRef(false);
   const realtimeSubscriptions = useRef<Map<string, any>>(new Map());
   const pendingUpdates = useRef<Map<string, NodeJS.Timeout>>(new Map());
+  const handleNewNotificationRef = useRef<(notification: ExtendedNotification) => void>();
 
   const currentPage = useMemo(() => {
     const path = location.pathname;
@@ -80,12 +81,23 @@ function App() {
     if (path.startsWith('/analytics')) return 'analytics';
     if (path.startsWith('/topic-manager')) return 'topic-manager';
     if (path.startsWith('/integrations')) return 'integrations';
+    if (path.startsWith('/user-management')) return 'user-management';
     return 'dashboard';
   }, [location.pathname]);
 
   const addToast = useCallback((notification: ExtendedNotification) => {
     console.log('🍞 Adding toast notification:', notification.title);
-    setToasts(prev => [{ ...notification }, ...prev]);
+    setToasts(prev => {
+      const exists = prev.some(n => 
+        n.id === notification.id || 
+        (n.oneSignalId && notification.oneSignalId && n.oneSignalId === notification.oneSignalId)
+      );
+      if (exists) {
+        console.log('🔄 Toast already exists, skipping');
+        return prev;
+      }
+      return [{ ...notification }, ...prev];
+    });
   }, []);
 
   const removeToast = useCallback((id: string) => {
@@ -101,84 +113,6 @@ function App() {
     push: 'OneSignal',
     subscription: isPushEnabled ? 'Active' : 'Inactive',
   }), [isPushEnabled]);
-
-  const forceRefreshNotifications = useCallback(async () => {
-    if (!session) return;
-    
-    console.log('🔄 Force refreshing notifications...');
-    
-    dataFetched.current = false;
-    
-    try {
-      const { data: notificationsData, error } = await supabase
-        .from('notifications')
-        .select('*')
-        .order('created_at', { ascending: false })
-        .limit(100);
-
-      if (error) {
-        console.error('Error force refreshing notifications:', error);
-        alert(`Database error: ${error.message}`);
-        return;
-      }
-
-      if (notificationsData) {
-        const notificationIds = notificationsData.map(n => n.id);
-        const commentsByNotificationId = new Map<string, CommentFromDB[]>();
-
-        if (notificationIds.length > 0) {
-          const { data: commentsData, error: commentsError } = await supabase
-            .from('comments')
-            .select('*')
-            .in('notification_id', notificationIds);
-
-          if (commentsData && !commentsError) {
-            commentsData.forEach(c => {
-              if (!commentsByNotificationId.has(c.notification_id)) {
-                commentsByNotificationId.set(c.notification_id, []);
-              }
-              commentsByNotificationId.get(c.notification_id)!.push(c);
-            });
-          }
-        }
-
-        const transformedData = notificationsData.map(n => {
-          const comments = commentsByNotificationId.get(n.id) || [];
-          return {
-            ...n,
-            comments: comments.map((c: CommentFromDB) => ({ ...c }))
-          };
-        });
-        
-        console.log('✅ Notifications force refreshed successfully:', transformedData.length);
-        setNotifications(transformedData as ExtendedNotification[]);
-        dataFetched.current = true;
-      } else {
-        console.log('📭 No notifications found during force refresh');
-        setNotifications([]);
-        dataFetched.current = true;
-      }
-    } catch (error) {
-      console.error('Error in force refresh:', error);
-      alert('Failed to refresh notifications. Please try again.');
-      dataFetched.current = false;
-    }
-  }, [session]);
-
-  const mapOneSignalSeverity = useCallback((notification: any): Severity => {
-    if (notification.data?.severity) {
-      const severity = notification.data.severity.toLowerCase();
-      if (['low', 'medium', 'high'].includes(severity)) {
-        return severity as Severity;
-      }
-    }
-    
-    switch (notification.priority) {
-      case 10: return 'high';
-      case 5: return 'medium';
-      default: return 'medium';
-    }
-  }, []);
 
   const handleNewNotification = useCallback(async (notification: ExtendedNotification) => {
     console.log('🔔 Handling new notification:', {
@@ -235,7 +169,6 @@ function App() {
     }
   }, [soundEnabled, snoozedUntil, topics, addToast]);
 
-  const handleNewNotificationRef = useRef(handleNewNotification);
   useEffect(() => {
     handleNewNotificationRef.current = handleNewNotification;
   }, [handleNewNotification]);
@@ -261,6 +194,22 @@ function App() {
     });
     realtimeSubscriptions.current.clear();
 
+    const subscribeWithRetry = (channelName: string, channel: any, maxRetries: number = 3, retryDelay: number = 2000) => {
+      let retryCount = 0;
+      channel.subscribe((status: string, err: any) => {
+        if (err) {
+          console.error(`❌ ${channelName} channel subscription error:`, err);
+          if (retryCount < maxRetries && status === 'TIMED_OUT') {
+            retryCount++;
+            console.log(`🔄 Retrying ${channelName} channel subscription (attempt ${retryCount}/${maxRetries})`);
+            setTimeout(() => channel.subscribe(), retryDelay);
+          }
+        } else {
+          console.log(`✅ ${channelName} channel status:`, status);
+        }
+      });
+    };
+
     // Notifications channel
     const notificationChannel = supabase
       .channel('notifications-global')
@@ -275,7 +224,7 @@ function App() {
           topic_id: payload.new.topic_id
         });
         
-        const newNotification = {...payload.new, comments: [] } as ExtendedNotification;
+        const newNotification = { ...payload.new, comments: [] } as ExtendedNotification;
         
         setNotifications(prev => {
           const exists = prev.some(n => 
@@ -332,15 +281,9 @@ function App() {
         if (payload.event === 'phx_error' || payload.status === 'error') {
           console.error('❌ Realtime connection error detected:', payload);
         }
-      })
-      .subscribe((status, err) => {
-        if (err) {
-          console.error('❌ Notification channel subscription error:', err);
-        } else {
-          console.log('✅ Notification channel status:', status);
-        }
       });
 
+    subscribeWithRetry('Notifications', notificationChannel);
     realtimeSubscriptions.current.set('notifications', notificationChannel);
 
     // Comments channel
@@ -391,15 +334,9 @@ function App() {
         if (payload.event === 'phx_error' || payload.status === 'error') {
           console.error('❌ Comments channel error detected:', payload);
         }
-      })
-      .subscribe((status, err) => {
-        if (err) {
-          console.error('❌ Comments channel subscription error:', err);
-        } else {
-          console.log('✅ Comments channel status:', status);
-        }
       });
 
+    subscribeWithRetry('Comments', commentsChannel);
     realtimeSubscriptions.current.set('comments', commentsChannel);
 
     // Topics channel
@@ -411,21 +348,15 @@ function App() {
         table: 'topics' 
       }, payload => {
         console.log('📂 New topic received:', payload.new);
-        setTopics(prev => [...prev, {...payload.new, subscribed: false} as Topic]);
+        setTopics(prev => [...prev, { ...payload.new, subscribed: false } as Topic]);
       })
       .on('system', { event: '*' }, (payload) => {
         if (payload.event === 'phx_error' || payload.status === 'error') {
           console.error('❌ Topics channel error detected:', payload);
         }
-      })
-      .subscribe((status, err) => {
-        if (err) {
-          console.error('❌ Topics channel subscription error:', err);
-        } else {
-          console.log('✅ Topics channel status:', status);
-        }
       });
 
+    subscribeWithRetry('Topics', topicChannel);
     realtimeSubscriptions.current.set('topics', topicChannel);
 
     // Subscriptions channel
@@ -442,14 +373,14 @@ function App() {
         if (payload.eventType === 'INSERT') {
           const newSub = payload.new as SubscriptionFromDB;
           setTopics(prev => prev.map(t => 
-            t.id === newSub.topic_id ? {...t, subscribed: true, subscription_id: newSub.id} : t
+            t.id === newSub.topic_id ? { ...t, subscribed: true, subscription_id: newSub.id } : t
           ));
         }
         if (payload.eventType === 'DELETE') {
           const oldSub = payload.old as Partial<SubscriptionFromDB>;
           if (oldSub?.topic_id) {
             setTopics(prev => prev.map(t => 
-              t.id === oldSub.topic_id ? {...t, subscribed: false, subscription_id: undefined} : t
+              t.id === oldSub.topic_id ? { ...t, subscribed: false, subscription_id: undefined } : t
             ));
           }
         }
@@ -458,16 +389,39 @@ function App() {
         if (payload.event === 'phx_error' || payload.status === 'error') {
           console.error('❌ Subscriptions channel error detected:', payload);
         }
-      })
-      .subscribe((status, err) => {
-        if (err) {
-          console.error('❌ Subscriptions channel subscription error:', err);
-        } else {
-          console.log('✅ Subscriptions channel status:', status);
-        }
       });
 
+    subscribeWithRetry('Subscriptions', subscriptionChannel);
     realtimeSubscriptions.current.set('subscriptions', subscriptionChannel);
+
+    // Monitored sites channel
+    const sitesChannel = supabase
+      .channel('public:monitored_sites')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'monitored_sites' },
+        (payload) => {
+          console.log('Site change received!', payload);
+          if (payload.eventType === 'INSERT') {
+            setSites(currentSites => [...currentSites, payload.new as MonitoredSite]);
+          }
+          if (payload.eventType === 'UPDATE') {
+            setSites(currentSites =>
+              currentSites.map(site =>
+                site.id === payload.new.id ? (payload.new as MonitoredSite) : site
+              )
+            );
+          }
+          if (payload.eventType === 'DELETE') {
+            setSites(currentSites =>
+              currentSites.filter(site => site.id !== payload.old.id)
+            );
+          }
+        }
+      );
+
+    subscribeWithRetry('Sites', sitesChannel);
+    realtimeSubscriptions.current.set('monitored_sites', sitesChannel);
     
     console.log('✅ All realtime subscriptions set up successfully');
   }, [session, handleNewNotification, userNames]);
@@ -490,7 +444,7 @@ function App() {
       });
       realtimeSubscriptions.current.clear();
     };
-  }, [session, dataFetched.current, setupRealtimeSubscriptions]);
+  }, [session, setupRealtimeSubscriptions]);
 
   // Periodic connection health check
   useEffect(() => {
@@ -544,6 +498,7 @@ function App() {
           setNotifications([]);
           setTopics([]);
           setToasts([]);
+          setSites([]);
           setProfile(null);
           setIsPushEnabled(false);
           setIsPushLoading(false);
@@ -576,14 +531,13 @@ function App() {
 
   // OneSignal Initialization and Subscription Change Handler
   useEffect(() => {
-    if (!session || authLoading || oneSignalInitialized.current) {
+    if (!session || oneSignalInitialized.current) {
       return;
     }
 
     const initAndSetupListeners = async () => {
       try {
         console.log('🔔 Initializing OneSignal...');
-
         await oneSignalService.initialize();
         console.log(`🔔 Logging into OneSignal with external user ID: ${session.user.id}`);
         await oneSignalService.login(session.user.id);
@@ -595,26 +549,288 @@ function App() {
         oneSignalService.onSubscriptionChange((subscribed: boolean) => {
           console.log('🔔 Subscription state changed in background to:', subscribed);
           setIsPushEnabled(subscribed);
-          // The database and tag logic is now handled by the manual functions.
-          // This listener just keeps the UI in sync with the browser's state.
         });
 
-        oneSignalService.setupForegroundNotifications((notification) => handleNewNotificationRef.current(notification));
+        oneSignalService.setupForegroundNotifications((notification) => handleNewNotificationRef.current!(notification));
         
         oneSignalInitialized.current = true;
         console.log('✅ OneSignal initialization and listeners setup complete.');
-
       } catch (error) {
         console.error('❌ Failed to initialize OneSignal:', error);
         alert('Failed to set up push notifications. Please refresh the page and try again.');
       } finally {
-        
+        setIsPushLoading(false);
       }
     };
 
     initAndSetupListeners();
-    
+  }, [session]);
+
+  // Data Fetching
+  useEffect(() => {
+    if (!session || dataFetched.current || authLoading) {
+      console.log('⏸️ Skipping data fetch', { session: !!session, dataFetched: dataFetched.current, authLoading });
+      return;
+    }
+
+    let mounted = true;
+
+    const fetchInitialData = async () => {
+      try {
+        console.log('📊 Fetching initial data for user:', session.user.id);
+        
+        setProfileLoading(true);
+        setProfileError(null);
+
+        const { data: profileData, error: profileFetchError } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', session.user.id)
+          .single();
+
+        if (mounted) {
+          if (profileFetchError) {
+            console.error('❌ Error fetching profile:', profileFetchError);
+            setProfileError('Failed to load your profile. There might be a network issue.');
+            setProfile(null);
+          } else if (profileData) {
+            setProfile(profileData as Profile);
+          } else {
+            setProfileError('Your user profile could not be found.');
+            setProfile(null);
+          }
+          setProfileLoading(false);
+        }
+
+        const { data: notificationsData, error: notificationsError } = await supabase
+          .from('notifications')
+          .select('*')
+          .order('created_at', { ascending: false })
+          .limit(100);
+
+        if (notificationsError) {
+          console.error('❌ Error fetching notifications:', notificationsError);
+          throw notificationsError;
+        }
+
+        if (notificationsData && mounted) {
+          const notificationIds = notificationsData.map(n => n.id);
+          const commentsByNotificationId = new Map<string, CommentFromDB[]>();
+
+          if (notificationIds.length > 0) {
+            const { data: commentsData, error: commentsError } = await supabase
+              .from('comments')
+              .select('*')
+              .in('notification_id', notificationIds)
+              .order('created_at', { ascending: true });
+
+            if (commentsData && !commentsError) {
+              commentsData.forEach(c => {
+                if (!commentsByNotificationId.has(c.notification_id)) {
+                  commentsByNotificationId.set(c.notification_id, []);
+                }
+                commentsByNotificationId.get(c.notification_id)!.push(c);
+              });
+            } else if (commentsError) {
+              console.error('⚠️ Error fetching comments:', commentsError);
+            }
+          }
+
+          const transformedData = notificationsData.map(n => {
+            const comments = commentsByNotificationId.get(n.id) || [];
+            return {
+              ...n,
+              comments: comments.map((c: CommentFromDB) => ({ ...c }))
+            };
+          });
+          
+          console.log('✅ Notifications fetched:', transformedData.length);
+          setNotifications(transformedData as ExtendedNotification[]);
+        } else {
+          console.log('📭 No notifications found');
+          setNotifications([]);
+        }
+
+        const [topicsResult, subscriptionsResult, teamsResult, sitesResult] = await Promise.all([
+          supabase.from('topics').select('*').order('name'),
+          supabase.from('topic_subscriptions').select('*').eq('user_id', session.user.id),
+          supabase.from('teams').select('*'),
+          supabase.from('monitored_sites').select('*')
+        ]);
+
+        if (topicsResult.error) {
+          console.error('❌ Error fetching topics:', topicsResult.error);
+          throw topicsResult.error;
+        }
+
+        if (subscriptionsResult.error) {
+          console.error('❌ Error fetching subscriptions:', subscriptionsResult.error);
+          throw subscriptionsResult.error;
+        }
+
+        if (teamsResult.error) {
+          console.error('❌ Error fetching teams:', teamsResult.error);
+          throw teamsResult.error;
+        }
+
+        if (sitesResult.error) {
+          console.error('❌ Error fetching monitored sites:', sitesResult.error);
+          throw sitesResult.error;
+        }
+
+        if (topicsResult.data && subscriptionsResult.data && mounted) {
+          const subscribedTopicIds = new Set(subscriptionsResult.data.map(sub => sub.topic_id));
+          const mergedTopics = topicsResult.data.map(topic => ({
+            ...topic,
+            subscribed: subscribedTopicIds.has(topic.id),
+            subscription_id: subscriptionsResult.data.find(s => s.topic_id === topic.id)?.id,
+          }));
+          console.log('✅ Topics fetched:', mergedTopics.length, 'subscriptions:', subscribedTopicIds.size);
+          setTopics(mergedTopics);
+        }
+
+        if (teamsResult.data && mounted) {
+          console.log('✅ Teams fetched:', teamsResult.data.length);
+          setTeams(teamsResult.data);
+        }
+
+        if (sitesResult.data && mounted) {
+          console.log('✅ Sites fetched:', sitesResult.data.length);
+          setSites(sitesResult.data);
+          setLoadingSites(false);
+        }
+
+        dataFetched.current = true;
+        console.log('✅ Initial data fetch completed successfully');
+      } catch (error) {
+        console.error('❌ Error in fetchInitialData:', error);
+        dataFetched.current = false;
+        
+        if (mounted) {
+          setNotifications([]);
+          setTopics([]);
+          setSites([]);
+          setLoadingSites(false);
+        }
+      }
+    };
+
+    fetchInitialData();
+    return () => {
+      console.log('🧹 Cleaning up data fetching effect...');
+      mounted = false;
+      
+      pendingUpdates.current.forEach(timeout => clearTimeout(timeout));
+      pendingUpdates.current.clear();
+      
+      realtimeSubscriptions.current.forEach(channel => {
+        try {
+          supabase.removeChannel(channel);
+        } catch (error) {
+          console.warn('⚠️ Error cleaning up channel:', error);
+        }
+      });
+      realtimeSubscriptions.current.clear();
+    };
   }, [session, authLoading]);
+
+  // Fetch User Names
+  useEffect(() => {
+    if (!session) return;
+
+    const fetchUserNames = async () => {
+      const userIds = new Set<string>();
+      notifications.forEach(n => {
+        (n.comments || []).forEach(c => {
+          if (c.user_id) {
+            userIds.add(c.user_id);
+          }
+        });
+      });
+
+      if (userIds.size > 0) {
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('id, full_name')
+          .in('id', Array.from(userIds));
+
+        if (error) {
+          console.error('Error fetching user names:', error);
+        } else {
+          const names = new Map<string, string>();
+          data.forEach(profile => {
+            names.set(profile.id, profile.full_name || 'Unknown User');
+          });
+          setUserNames(names);
+        }
+      }
+    };
+
+    if (notifications.length > 0) {
+      fetchUserNames();
+    }
+  }, [notifications, session]);
+
+  const forceRefreshNotifications = useCallback(async () => {
+    if (!session) return;
+    
+    console.log('🔄 Force refreshing notifications...');
+    
+    try {
+      const { data: notificationsData, error } = await supabase
+        .from('notifications')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(100);
+
+      if (error) {
+        console.error('Error force refreshing notifications:', error);
+        alert(`Database error: ${error.message}`);
+        return;
+      }
+
+      if (notificationsData) {
+        const notificationIds = notificationsData.map(n => n.id);
+        const commentsByNotificationId = new Map<string, CommentFromDB[]>();
+
+        if (notificationIds.length > 0) {
+          const { data: commentsData, error: commentsError } = await supabase
+            .from('comments')
+            .select('*')
+            .in('notification_id', notificationIds)
+            .order('created_at', { ascending: true });
+
+          if (commentsData && !commentsError) {
+            commentsData.forEach(c => {
+              if (!commentsByNotificationId.has(c.notification_id)) {
+                commentsByNotificationId.set(c.notification_id, []);
+              }
+              commentsByNotificationId.get(c.notification_id)!.push(c);
+            });
+          } else if (commentsError) {
+            console.error('⚠️ Error fetching comments:', commentsError);
+          }
+        }
+
+        const transformedData = notificationsData.map(n => {
+          const comments = commentsByNotificationId.get(n.id) || [];
+          return {
+            ...n,
+            comments: comments.map((c: CommentFromDB) => ({ ...c }))
+          };
+        });
+        
+        console.log('✅ Notifications force refreshed successfully:', transformedData.length);
+        setNotifications(transformedData as ExtendedNotification[]);
+      } else {
+        console.log('📭 No notifications found during force refresh');
+        setNotifications([]);
+      }
+    } catch (error) {
+      console.error('Error in force refresh:', error);
+      alert('Failed to refresh notifications. Please try again.');
+    }
+  }, [session]);
 
   const updateNotification = useCallback(async (notificationId: string, updates: NotificationUpdatePayload) => {
     console.log('🔧 Updating notification:', { notificationId, updates });
@@ -709,268 +925,15 @@ function App() {
         }
         
         console.log('✅ Database update successful:', data);
-        
       } catch (error) {
         console.error("❌ Failed to update notification:", error);
-        throw error;
+        alert('Failed to update notification. Please try again.');
       } finally {
         pendingUpdates.current.delete(notificationId);
       }
     }, 500);
     
     pendingUpdates.current.set(notificationId, updateTimeout);
-  }, [notifications]);
-
-  // Data Fetching
-  useEffect(() => {
-    if (!session || dataFetched.current || authLoading) {
-      console.log('⏸️ Skipping data fetch', { session: !!session, dataFetched: dataFetched.current, authLoading });
-      return;
-    }
-
-    let mounted = true;
-
-    const fetchInitialData = async () => {
-      try {
-        console.log('📊 Fetching initial data for user:', session.user.id);
-        
-        setProfileLoading(true);
-        setProfileError(null);
-
-        const { data: profileData, error: profileFetchError } = await supabase
-          .from('profiles')
-          .select('*')
-          .eq('id', session.user.id)
-          .single();
-
-        if (mounted) {
-          if (profileFetchError) {
-            console.error('❌ Error fetching profile:', profileFetchError);
-            setProfileError('Failed to load your profile. There might be a network issue.');
-            setProfile(null);
-          } else if (profileData) {
-            setProfile(profileData as Profile);
-          } else {
-            setProfileError('Your user profile could not be found.');
-            setProfile(null);
-          }
-          setProfileLoading(false);
-        }
-
-        const { data: notificationsData, error: notificationsError } = await supabase
-          .from('notifications')
-          .select('*')
-          .order('created_at', { ascending: false })
-          .limit(100);
-
-        if (notificationsError) {
-          console.error('❌ Error fetching notifications:', notificationsError);
-          throw notificationsError;
-        }
-
-        if (notificationsData && mounted) {
-          const notificationIds = notificationsData.map(n => n.id);
-          const commentsByNotificationId = new Map<string, CommentFromDB[]>();
-
-          if (notificationIds.length > 0) {
-            const { data: commentsData, error: commentsError } = await supabase
-              .from('comments')
-              .select('*')
-              .in('notification_id', notificationIds)
-              .order('created_at', { ascending: true });
-
-            if (commentsData && !commentsError) {
-              commentsData.forEach(c => {
-                if (!commentsByNotificationId.has(c.notification_id)) {
-                  commentsByNotificationId.set(c.notification_id, []);
-                }
-                commentsByNotificationId.get(c.notification_id)!.push(c);
-              });
-            } else if (commentsError) {
-              console.error('⚠️ Error fetching comments:', commentsError);
-            }
-          }
-
-          const transformedData = notificationsData.map(n => {
-            const comments = commentsByNotificationId.get(n.id) || [];
-            return {
-              ...n,
-              comments: comments.map((c: CommentFromDB) => ({ ...c }))
-            };
-          });
-          
-          console.log('✅ Notifications fetched:', transformedData.length);
-          setNotifications(transformedData as ExtendedNotification[]);
-        } else {
-          console.log('📭 No notifications found');
-          setNotifications([]);
-        }
-
-        const [topicsResult, subscriptionsResult] = await Promise.all([
-          supabase.from('topics').select('*').order('name'),
-          supabase.from('topic_subscriptions').select('*').eq('user_id', session.user.id)
-        ]);
-
-        if (topicsResult.error) {
-          console.error('❌ Error fetching topics:', topicsResult.error);
-          throw topicsResult.error;
-        }
-
-        if (subscriptionsResult.error) {
-          console.error('❌ Error fetching subscriptions:', subscriptionsResult.error);
-          throw subscriptionsResult.error;
-        }
-
-        if (topicsResult.data && subscriptionsResult.data && mounted) {
-          const subscribedTopicIds = new Set(subscriptionsResult.data.map(sub => sub.topic_id));
-          const mergedTopics = topicsResult.data.map(topic => ({
-            ...topic,
-            subscribed: subscribedTopicIds.has(topic.id),
-            subscription_id: subscriptionsResult.data.find(s => s.topic_id === topic.id)?.id,
-          }));
-          console.log('✅ Topics fetched:', mergedTopics.length, 'subscriptions:', subscribedTopicIds.size);
-          setTopics(mergedTopics);
-        }
-
-        const { data: teamsData, error: teamsError } = await supabase
-          .from('teams')
-          .select('*');
-
-        if (teamsError) {
-          console.error('❌ Error fetching teams:', teamsError);
-        } else if (teamsData && mounted) {
-          console.log('✅ Teams fetched:', teamsData.length);
-          setTeams(teamsData);
-        }
-
-        dataFetched.current = true;
-        console.log('✅ Initial data fetch completed successfully');
-
-      } catch (error) {
-        console.error('❌ Error in fetchInitialData:', error);
-        dataFetched.current = false;
-        
-        if (mounted) {
-          setNotifications([]);
-          setTopics([]);
-        }
-      }
-    };
-
-    fetchInitialData();
-    return () => {
-      console.log('🧹 Cleaning up data fetching effect...');
-      mounted = false;
-      
-      pendingUpdates.current.forEach(timeout => clearTimeout(timeout));
-      pendingUpdates.current.clear();
-      
-      realtimeSubscriptions.current.forEach(channel => {
-        try {
-          supabase.removeChannel(channel);
-        } catch (error) {
-          console.warn('⚠️ Error cleaning up channel:', error);
-        }
-      });
-      realtimeSubscriptions.current.clear();
-    };
-  }, [session, authLoading]);
-
-  // Fetch Monitored Sites
-  useEffect(() => {
-    if (!session) return;
-
-    const fetchSites = async () => {
-      setLoadingSites(true);
-      setSitesError(null);
-      try {
-        const { data, error } = await supabase
-          .from('monitored_sites')
-          .select('*');
-
-        if (error) {
-          throw error;
-        }
-        setSites(data || []);
-      } catch (error: any) {
-        console.error('Error fetching monitored sites:', error);
-        setSitesError('Failed to load site data.');
-      } finally {
-        setLoadingSites(false);
-      }
-    };
-
-    fetchSites();
-  }, [session]);
-
-  useEffect(() => {
-    if (!session) return;
-
-    const sitesSubscription = supabase
-      .channel('public:monitored_sites')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'monitored_sites' },
-        (payload) => {
-          console.log('Site change received!', payload);
-          if (payload.eventType === 'INSERT') {
-            setSites(currentSites => [...currentSites, payload.new as MonitoredSite]);
-          }
-          if (payload.eventType === 'UPDATE') {
-            setSites(currentSites =>
-              currentSites.map(site =>
-                site.id === payload.new.id ? (payload.new as MonitoredSite) : site
-              )
-            );
-          }
-          if (payload.eventType === 'DELETE') {
-            setSites(currentSites =>
-              currentSites.filter(site => site.id !== payload.old.id)
-            );
-          }
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(sitesSubscription);
-    };
-  }, [session]);
-
-  useEffect(() => {
-    if (!session) return;
-
-    const fetchUserNames = async () => {
-      const userIds = new Set<string>();
-      notifications.forEach(n => {
-        (n.comments || []).forEach(c => {
-          if (c.user_id) {
-            userIds.add(c.user_id);
-          }
-        });
-      });
-
-      if (userIds.size > 0) {
-        const { data, error } = await supabase
-          .from('profiles')
-          .select('id, full_name')
-          .in('id', Array.from(userIds));
-
-        if (error) {
-          console.error('Error fetching user names:', error);
-        } else {
-          const names = new Map<string, string>();
-          data.forEach(profile => {
-            names.set(profile.id, profile.full_name || 'Unknown User');
-          });
-          setUserNames(names);
-        }
-      }
-    };
-
-    if (notifications.length > 0) {
-      fetchUserNames();
-    }
   }, [notifications]);
 
   const subscribeToPush = useCallback(async () => {
@@ -1054,6 +1017,7 @@ function App() {
     try {
       await oneSignalService.logout();
       console.log('🔔 Logged out from OneSignal');
+      await oneSignalService.removePlayerIdFromDatabase(session!.user.id);
     } catch (error) {
       console.error('❌ Error logging out from OneSignal (non-fatal):', error);
     }
@@ -1064,7 +1028,7 @@ function App() {
       console.error('❌ Error signing out:', error);
       alert('Failed to sign out. Please try again.');
     }
-  }, [oneSignalService]);
+  }, [session, oneSignalService]);
 
   const handleNavigate = useCallback((page: string) => {
     if (session) {
@@ -1074,6 +1038,8 @@ function App() {
   }, [session, navigate]);
   
   const sendTestAlert = useCallback(async () => {
+    if (!session) return;
+
     if (snoozedUntil && new Date() < snoozedUntil) {
       console.log("Alerts are snoozed. Test alert blocked.");
       alert("Alerts are currently snoozed. Please unsnooze to send test alerts.");
@@ -1098,8 +1064,8 @@ function App() {
       type: 'server_alert',
       title: `Test Alert: High Priority${topicName}`,
       message: 'This is a test push notification from MCM Alerts.',
-      severity: 'high',
-      status: 'new',
+      severity: 'high' as Severity,
+      status: 'new' as NotificationStatus,
       timestamp: new Date().toISOString(),
       site: 'prod-web-01',
       topic_id: topicId,
@@ -1120,7 +1086,7 @@ function App() {
       console.error("❌ Error sending test alert:", error);
       alert('Failed to send test alert. Please try again.');
     }
-  }, [snoozedUntil, topics]);
+  }, [snoozedUntil, topics, session]);
 
   const addComment = useCallback(async (notificationId: string, text: string) => {
     if (!session) {
@@ -1137,7 +1103,7 @@ function App() {
           text: text.trim(),
           user_id: session.user.id
         }])
-        .select('id')
+        .select('id, notification_id, text, user_id, created_at')
         .single();
 
       if (error) {
@@ -1149,6 +1115,7 @@ function App() {
       console.log('✅ Comment inserted successfully:', data.id);
     } catch (error) {
       console.error("❌ Failed to add comment:", error);
+      alert('Failed to add comment. Please try again.');
       throw error;
     }
   }, [session]);
@@ -1189,7 +1156,6 @@ function App() {
         if (isPushEnabled) {
           oneSignalService.removeUserTags([`topic_${topic.id}`]).catch(e => console.warn('Failed to remove OneSignal tag', e));
         }
-
       } else {
         const { data, error } = await supabase
           .from('topic_subscriptions')
@@ -1216,7 +1182,7 @@ function App() {
       console.error('Error toggling subscription:', error);
       alert('Failed to update subscription. Please try again.');
     }
-  }, [session, isPushEnabled]);
+  }, [session, isPushEnabled, oneSignalService]);
 
   const handleDeleteTopic = useCallback(async (topic: Topic) => {
     if (!session) return;
@@ -1256,6 +1222,7 @@ function App() {
           const mergedTopics = data.map(topic => ({
             ...topic,
             subscribed: subscribedTopicIds.has(topic.id),
+            subscription_id: topics.find(t => t.id === topic.id && t.subscribed)?.subscription_id
           }));
           setTopics(mergedTopics);
         }
