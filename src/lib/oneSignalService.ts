@@ -67,48 +67,52 @@ export class OneSignalService {
 
   private doInitialize(): Promise<void> {
     this.initializing = true;
+    // This promise will wrap the entire initialization process.
     return new Promise(async (resolve, reject) => {
-        const timeout = setTimeout(() => {
-            this.initializing = false;
-            reject(new Error('OneSignal initialization timed out.'));
-        }, 15000);
-
         try {
+            // First, wait for the OneSignal SDK script to be loaded and ready.
             await this.waitForOneSignal();
 
-            window.OneSignal.push(() => {
-                window.OneSignal.init({
+            // The OneSignal SDK uses a command queue. We push a function to it.
+            // This function will execute once the SDK is fully operational.
+            window.OneSignal.push(async () => {
+                console.log('🔔 Initializing OneSignal with app ID:', this.appId);
+                
+                // The init method returns a promise that resolves when initialization is complete.
+                await window.OneSignal.init({
                     appId: this.appId,
                     allowLocalhostAsSecureOrigin: true,
                     notifyButton: {
-                        enable: false,
+                        enable: false, // We use a custom UI element
                     },
-                    persistNotification: true,
-                    autoRegister: false,
+                    persistNotification: true, // Keep notifications in the Notification Center
+                    autoRegister: false, // We manually register the user for notifications
                     safari_web_id: import.meta.env.VITE_SAFARI_WEB_ID,
                     welcomeNotification: {
-                        disable: true,
+                        disable: true, // Don't show the default welcome notification
                     },
                 });
 
-                window.OneSignal.on('sdkInit', () => {
-                    clearTimeout(timeout);
-                    console.log('✅ OneSignal initialized successfully');
-                    this.initialized = true;
-                    this.initializing = false;
-                    resolve();
-                });
+                // If the init promise resolves, initialization was successful.
+                console.log('✅ OneSignal initialized successfully');
+                this.initialized = true;
+                this.initializing = false;
+                resolve(); // Resolve the main promise to signal completion.
             });
         } catch (error) {
-            clearTimeout(timeout);
             console.error('❌ Failed to initialize OneSignal:', error);
             this.initializing = false;
+
+            // Implement a retry mechanism in case of transient network errors.
             if (this.retryCount < this.maxRetries) {
                 this.retryCount++;
                 console.log(`🔄 Retrying OneSignal initialization (attempt ${this.retryCount}/${this.maxRetries})`);
-                this.initPromise = null; 
+                this.initPromise = null; // Reset the promise to allow a new attempt.
+                // Re-call the initialize method, and pipe its result to the current promise.
                 this.initialize().then(resolve).catch(reject);
+
             } else {
+                // If all retries fail, reject the promise.
                 reject(new Error('OneSignal initialization failed after all retries'));
             }
         }
