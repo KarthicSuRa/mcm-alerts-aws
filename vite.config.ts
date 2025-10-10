@@ -7,25 +7,26 @@ export default defineConfig({
   plugins: [
     react(),
     VitePWA({
-      // This tells the plugin to use your custom service worker as a base
-      // and inject the list of files to cache into it.
-      strategies: 'injectManifest',
+      // The strategy is now 'generateSW' to let the plugin create the service worker.
+      strategies: 'generateSW',
 
-      // This points to the source directory and file of your service worker.
-      srcDir: 'public',
-      filename: 'sw.js', // Correct, current property name
+      // We no longer need srcDir or filename for this strategy.
 
-      // This prevents the plugin from adding its own registration script,
-      // since you already register the worker in `index.tsx`.
+      // This is kept as null since you handle registration in index.tsx.
       injectRegister: null,
 
-      // This ensures that the plugin includes all necessary files
-      // in the precache manifest for offline support.
-      injectManifest: {
+      // A workbox object is added to inject the OneSignal script correctly.
+      workbox: {
+        // This imports the OneSignal SDK into the generated service worker.
+        // It will be placed at the top of the file, as required.
+        importScripts: [
+          'https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.sw.js',
+        ],
+        // This ensures all your assets are still cached for offline use.
         globPatterns: ['**/*.{js,css,html,ico,png,svg,json,wav}'],
       },
 
-      // This configures the PWA `manifest.webmanifest` file generation.
+      // Your PWA manifest remains unchanged.
       manifest: {
         name: 'MCM Alerts',
         short_name: 'MCM Alerts',
