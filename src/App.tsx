@@ -989,7 +989,7 @@ function App() {
     try {
       console.log('🔔 Starting unsubscription process...');
       await oneSignalService.unsubscribe();
-      await oneSignalService.removePlayerIdFromDatabase(session.user.id);
+      await oneSignalService.removeCurrentPlayerIdFromDatabase();
       console.log('✅ Player ID removed from database');
       setIsPushEnabled(false);
       console.log('✅ Successfully unsubscribed from push notifications');
@@ -1024,7 +1024,7 @@ function App() {
     try {
       await oneSignalService.logout();
       console.log('🔔 Logged out from OneSignal');
-      await oneSignalService.removePlayerIdFromDatabase(session!.user.id);
+      await oneSignalService.removeAllPlayerIdsFromDatabase(session!.user.id);
     } catch (error) {
       console.error('❌ Error logging out from OneSignal (non-fatal):', error);
     }

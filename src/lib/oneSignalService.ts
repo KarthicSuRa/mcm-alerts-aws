@@ -1,3 +1,4 @@
+
 import { supabase } from './supabaseClient';
 import type { Notification, Severity } from '../types';
 
@@ -306,7 +307,7 @@ export class OneSignalService {
       console.log('🔔 Saving player ID to database for user:', userId);
       const { error } = await supabase
         .from('onesignal_players')
-        .upsert({ user_id: userId, player_id: playerId }, { onConflict: 'user_id' });
+        .upsert({ user_id: userId, player_id: playerId }, { onConflict: 'player_id' });
 
       if (error) throw error;
       console.log('✅ Player ID saved to database');
@@ -316,21 +317,46 @@ export class OneSignalService {
     }
   }
 
-  async removePlayerIdFromDatabase(userId: string): Promise<void> {
+  async removeAllPlayerIdsFromDatabase(userId: string): Promise<void> {
     try {
-      console.log('🔔 Removing player ID from database for user:', userId);
+      console.log('🔔 Removing all player IDs from database for user:', userId);
       const { error } = await supabase
         .from('onesignal_players')
         .delete()
         .eq('user_id', userId);
 
       if (error) {
-        console.error('❌ Failed to remove player ID from database:', error);
+        console.error('❌ Failed to remove player IDs from database:', error);
         throw error;
       }
-      console.log('✅ Player ID removed from database');
+      console.log('✅ All player IDs for user removed from database');
     } catch (error) {
-      console.error('❌ Error removing player ID from database:', error);
+      console.error('❌ Error removing player IDs from database:', error);
+      throw error;
+    }
+  }
+
+  async removeCurrentPlayerIdFromDatabase(): Promise<void> {
+    const playerId = await this.getPlayerId();
+    if (!playerId) {
+      console.warn('🔔 No player ID available to remove.');
+      return;
+    }
+
+    try {
+      console.log('🔔 Removing current player ID from database:', playerId);
+      const { error } = await supabase
+        .from('onesignal_players')
+        .delete()
+        .eq('player_id', playerId);
+
+      if (error) {
+        console.error('❌ Failed to remove current player ID from database:', error);
+        throw error;
+      }
+      console.log('✅ Current player ID removed from database');
+    } catch (error) {
+      console.error('❌ Error removing current player ID from database:', error);
       throw error;
     }
   }
