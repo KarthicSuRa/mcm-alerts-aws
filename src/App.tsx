@@ -68,7 +68,7 @@ function App() {
   const oneSignalInitialized = useRef(false);
   const dataFetched = useRef(false);
   const realtimeSubscriptions = useRef<Map<string, any>>(new Map());
-  const pendingUpdates = useRef<Map<string, NodeJS.Timeout>>(new Map());
+  const pendingUpdates = useRef<Map<string, number>>(new Map());
   const handleNewNotificationRef = useRef<(notification: ExtendedNotification) => void>();
 
   const currentPage = useMemo(() => {
@@ -503,7 +503,7 @@ function App() {
           setIsPushEnabled(false);
           setIsPushLoading(false);
           
-          pendingUpdates.current.forEach(timeout => clearTimeout(timeout));
+          pendingUpdates.current.forEach(timeout => window.clearTimeout(timeout));
           pendingUpdates.current.clear();
           
           console.log('🧹 Clearing realtime subscriptions due to auth change');
@@ -534,6 +534,10 @@ function App() {
     if (!session || oneSignalInitialized.current) {
       return;
     }
+    
+    // --- Add this line ---
+    oneSignalInitialized.current = true;
+    console.log('🚩 OneSignal initialization sequence initiated.');
 
     const initAndSetupListeners = async () => {
       try {
@@ -553,10 +557,13 @@ function App() {
 
         oneSignalService.setupForegroundNotifications((notification) => handleNewNotificationRef.current!(notification));
         
-        oneSignalInitialized.current = true;
         console.log('✅ OneSignal initialization and listeners setup complete.');
       } catch (error) {
         console.error('❌ Failed to initialize OneSignal:', error);
+        
+        // --- And add this line ---
+        oneSignalInitialized.current = false; // Reset on failure to allow re-attempts
+
         alert('Failed to set up push notifications. Please refresh the page and try again.');
       } finally {
         setIsPushLoading(false);
@@ -564,7 +571,7 @@ function App() {
     };
 
     initAndSetupListeners();
-  }, [session]);
+  }, [session, oneSignalService]); // Make sure oneSignalService is in the dependency array
 
   // Data Fetching
   useEffect(() => {
@@ -720,7 +727,7 @@ function App() {
       console.log('🧹 Cleaning up data fetching effect...');
       mounted = false;
       
-      pendingUpdates.current.forEach(timeout => clearTimeout(timeout));
+      pendingUpdates.current.forEach(timeout => window.clearTimeout(timeout));
       pendingUpdates.current.clear();
       
       realtimeSubscriptions.current.forEach(channel => {
@@ -843,7 +850,7 @@ function App() {
     
     const existingTimeout = pendingUpdates.current.get(notificationId);
     if (existingTimeout) {
-      clearTimeout(existingTimeout);
+      window.clearTimeout(existingTimeout);
       pendingUpdates.current.delete(notificationId);
     }
     
@@ -868,7 +875,7 @@ function App() {
       return updatedNotifications;
     });
     
-    const updateTimeout = setTimeout(async () => {
+    const updateTimeout = window.setTimeout(async () => {
       try {
         console.log('🔧 Executing database update for notification:', notificationId);
         
