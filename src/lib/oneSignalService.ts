@@ -1,4 +1,3 @@
-
 import { supabase } from './supabaseClient';
 import type { Notification, Severity } from '../types';
 
@@ -156,7 +155,11 @@ export class OneSignalService {
         console.log('🔔 Setting up foreground notification listener');
         window.OneSignal.Notifications.addEventListener('foregroundWillDisplay', (event: any) => {
           console.log('🔔 Foreground notification received:', event);
-          event.preventDefault();
+          try {
+            event.preventDefault();
+          } catch (e) {
+            console.warn("⚠️ Browser does not support preventing default notification display.", e);
+          }
 
           const oneSignalId = event.notification?.notificationId;
           const notificationId = oneSignalId || `fg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
