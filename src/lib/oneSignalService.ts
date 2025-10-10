@@ -178,7 +178,6 @@ export class OneSignalService {
           };
 
           callback(notificationData);
-          event.notification.display();
         });
     } catch (error) {
       console.error('❌ Failed to set up foreground notification listener:', error);
