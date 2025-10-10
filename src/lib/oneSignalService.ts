@@ -68,10 +68,11 @@ export class OneSignalService {
   private doInitialize(): Promise<void> {
     this.initializing = true;
     return new Promise(async (resolve, reject) => {
+        console.log("Increased OneSignal timeout to 40 seconds");
         const initializationTimeout = setTimeout(() => {
             this.initializing = false;
-            reject(new Error('OneSignal initialization process timed out after 20 seconds. This could be due to a network issue, ad-blocker, or incorrect App ID.'));
-        }, 20000);
+            reject(new Error('OneSignal initialization process timed out after 40 seconds. This could be due to a network issue, ad-blocker, or incorrect App ID.'));
+        }, 40000);
 
         try {
             console.log('1/4: Waiting for OneSignal SDK script to load...');
