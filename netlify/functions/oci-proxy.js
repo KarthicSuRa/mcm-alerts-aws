@@ -5,10 +5,10 @@
  * it disables SSL certificate validation (rejectUnauthorized: false), allowing 
  * it to successfully connect to the self-signed HTTPS server, thus solving 
  * the ERR_CERT_AUTHORITY_INVALID error the browser was seeing.
- * * Dependencies: Requires 'node-fetch' 
+ * * Dependencies: Requires 'cross-fetch' 
  */
 
-import fetch from 'node-fetch';
+import fetch from 'cross-fetch';
 import https from 'https'; // Node.js built-in module
 
 // --- Configuration ---
