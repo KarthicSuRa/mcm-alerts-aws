@@ -28,7 +28,7 @@ const AGENT_PROXY_URL = '/.netlify/functions/oci-proxy';
 // ==================================================================
 
 const apiKey = "AIzaSyCOPdMvaarEgHcXNZdTvyAKjWwuPVMS46M";
-const geminiApiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${apiKey}`;
+const geminiApiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key={YourApiKey}`;
 
 // ==================================================================
 // API Functions
