@@ -8,8 +8,8 @@
  * * Dependencies: Requires 'cross-fetch' 
  */
 
-import fetch from 'cross-fetch';
-import https from 'https'; // Node.js built-in module
+const fetch = require('cross-fetch');
+const https = require('https'); // Node.js built-in module
 
 // --- Configuration ---
 // The target HTTPS IP address where the OCI agent is running
