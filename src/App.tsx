@@ -20,7 +20,7 @@ import { ThemeContext } from './contexts/ThemeContext';
 import { Routes, Route, useNavigate, useLocation } from 'react-router-dom';
 import { SiteDetailPage } from './pages/monitoring/SiteDetailPage';
 import UserManagementPage from './pages/UserManagementPage';
-import SyntheticTestRunner from './components/SyntheticTestRunner';
+import SyntheticMonitoringPage from './pages/monitoring/SyntheticMonitoringPage';
 import ErrorBoundary from './components/ui/ErrorBoundary';
 
 type NotificationFromDB = Database['public']['Tables']['notifications']['Row'];
@@ -1407,7 +1407,7 @@ function App() {
                   /> 
                 } />
                 <Route path="/synthetic-monitoring" element={
-                  <SyntheticTestRunner />
+                  <SyntheticMonitoringPage />
                 } />
                 <Route path="/analytics" element={ 
                   <AnalyticsPage 
