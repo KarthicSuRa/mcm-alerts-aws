@@ -422,21 +422,19 @@ export default function SyntheticMonitoringPage() {
         }`;
 
     return (
-        <div className="h-screen flex flex-col bg-gray-50 text-gray-900 font-['Inter']">
-            <header className="px-4 sm:px-8 py-4 border-b border-gray-200 shrink-0">
-                <div className="max-w-7xl mx-auto flex justify-between items-end">
-                    <div>
-                        <h1 className="text-3xl sm:text-4xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-sky-600 to-cyan-700">
-                            AI Synthetic Monitoring Dashboard
-                        </h1>
-                        <p className="text-gray-600 mt-1">
-                            Flow execution via Netlify Proxy to OCI Agent
-                        </p>
-                    </div>
+        <main className="flex-grow md:ml-72 p-4 sm:p-8 bg-gray-50 text-gray-900 font-['Inter']">
+            <header className="mb-8 flex justify-between items-end border-b border-gray-200 pb-4">
+                <div>
+                    <h1 className="text-3xl sm:text-4xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-sky-600 to-cyan-700">
+                        AI Synthetic Monitoring Dashboard
+                    </h1>
+                    <p className="text-gray-600 mt-1">
+                        Flow execution via Netlify Proxy to OCI Agent
+                    </p>
                 </div>
             </header>
 
-            <main className="flex-grow flex flex-col lg:flex-row gap-8 p-4 sm:p-8 overflow-y-auto">
+            <div className="flex flex-col lg:flex-row gap-8">
                 <div className="lg:w-1/3 flex flex-col space-y-6">
                     <div className="bg-white p-6 rounded-xl shadow-xl border border-gray-200">
                         <h2 className="text-xl font-semibold mb-4 text-gray-800 border-b border-gray-200 pb-2">Execution Inputs</h2>
@@ -502,7 +500,7 @@ export default function SyntheticMonitoringPage() {
                         )}
                     </div>
                 </div>
-            </main>
-        </div>
+            </div>
+        </main>
     );
 }
