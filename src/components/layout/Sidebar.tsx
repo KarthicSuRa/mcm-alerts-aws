@@ -16,7 +16,7 @@ const navItems = [
   { name: 'Dashboard', icon: 'dashboard', page: 'dashboard' },
   { name: 'Calendar', icon: 'calendar-view', page: 'calendar' },
   { name: 'Site Monitoring', icon: 'monitor', page: 'site-monitoring' },
-  { name: 'Synthetic Monitoring', icon: 'beaker', page: 'synthetic-monitoring' },
+  { name: 'Synthetic Monitoring', icon: 'bot', page: 'synthetic-monitoring' },
   { name: 'Integrations', icon: 'zap', page: 'integrations' },
   { name: 'Analytics', icon: 'analytics-pie', page: 'analytics' },
   { name: 'Topic Subscriptions', icon: 'topic', page: 'topic-manager' },
