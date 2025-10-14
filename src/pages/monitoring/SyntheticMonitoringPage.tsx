@@ -422,9 +422,9 @@ export default function SyntheticMonitoringPage() {
         }`;
 
     return (
-        <div className="min-h-screen bg-gray-50 text-gray-900 p-4 sm:p-8 font-['Inter']">
-            <div className="max-w-7xl mx-auto">
-                <header className="mb-8 flex justify-between items-end border-b border-gray-200 pb-4">
+        <div className="h-screen flex flex-col bg-gray-50 text-gray-900 font-['Inter']">
+            <header className="px-4 sm:px-8 py-4 border-b border-gray-200 shrink-0">
+                <div className="max-w-7xl mx-auto flex justify-between items-end">
                     <div>
                         <h1 className="text-3xl sm:text-4xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-sky-600 to-cyan-700">
                             AI Synthetic Monitoring Dashboard
@@ -433,76 +433,76 @@ export default function SyntheticMonitoringPage() {
                             Flow execution via Netlify Proxy to OCI Agent
                         </p>
                     </div>
-                </header>
+                </div>
+            </header>
 
-                <div className="flex flex-col lg:flex-row gap-8">
-                    <div className="lg:w-1/3 flex flex-col space-y-6">
-                        <div className="bg-white p-6 rounded-xl shadow-xl border border-gray-200">
-                            <h2 className="text-xl font-semibold mb-4 text-gray-800 border-b border-gray-200 pb-2">Execution Inputs</h2>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Target URL</label>
-                            <input
-                                type="url"
-                                value={targetUrl}
-                                onChange={(e) => setTargetUrl(e.target.value)}
-                                placeholder="e.g., https://example.com"
-                                className="w-full p-3 rounded-lg bg-gray-100 border border-gray-300 focus:ring-sky-500 focus:border-sky-500 mb-4 text-gray-900"
-                                disabled={loading}
-                            />
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Synthetic Flow Prompt (Natural Language)</label>
-                            <textarea
-                                value={flowPrompt}
-                                onChange={(e) => setFlowPrompt(e.target.value)}
-                                placeholder="e.g., Navigate to the pricing page and click the subscribe button."
-                                rows={4}
-                                className="w-full p-3 rounded-lg bg-gray-100 border border-gray-300 focus:ring-sky-500 focus:border-sky-500 resize-none text-gray-900"
-                                disabled={loading}
-                            />
-                            <div className="flex flex-col gap-3 mt-4">
-                                <button onClick={handleEnhanceFlow} disabled={loading || !flowPrompt} className={`py-3 rounded-lg font-semibold transition-all duration-200 text-white shadow-lg ${loading ? 'bg-gray-400 cursor-not-allowed' : 'bg-indigo-600 hover:bg-indigo-700 focus:ring-4 focus:ring-indigo-500 focus:ring-opacity-50'}`}>
-                                    ✨ Enhance Flow Prompt
-                                </button>
-                                <button onClick={startMonitoring} disabled={loading || !targetUrl || !flowPrompt} className={`py-3 rounded-lg font-semibold transition-all duration-200 shadow-lg ${loading ? 'bg-gray-400 cursor-not-allowed' : 'bg-sky-600 hover:bg-sky-700 focus:ring-4 focus:ring-sky-500 focus:ring-opacity-50'}`}>
-                                    {loading ? 'Running Flow...' : 'Run Synthetic Test'}
-                                </button>
-                            </div>
-                        </div>
-                        <div className="grid grid-cols-2 gap-4">
-                            <MetricCard title="Status" value={runStatus} color={statusClasses[runStatus].replace('bg-', 'text-').split(' ')[0]} />
-                            <MetricCard title="Execution Time" value={(runTimeMs / 1000).toFixed(2)} unit="s" color={runStatus === 'SUCCESS' ? 'text-green-600' : 'text-gray-500'} />
-                            <MetricCard title="Steps Executed" value={totalSteps} unit="steps" color={'text-cyan-600'} />
-                            <MetricCard title="Timeline Frames" value={screenshotTimeline.length} unit="frames" color={'text-purple-600'} />
+            <main className="flex-grow flex flex-col lg:flex-row gap-8 p-4 sm:p-8 overflow-y-auto">
+                <div className="lg:w-1/3 flex flex-col space-y-6">
+                    <div className="bg-white p-6 rounded-xl shadow-xl border border-gray-200">
+                        <h2 className="text-xl font-semibold mb-4 text-gray-800 border-b border-gray-200 pb-2">Execution Inputs</h2>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Target URL</label>
+                        <input
+                            type="url"
+                            value={targetUrl}
+                            onChange={(e) => setTargetUrl(e.target.value)}
+                            placeholder="e.g., https://example.com"
+                            className="w-full p-3 rounded-lg bg-gray-100 border border-gray-300 focus:ring-sky-500 focus:border-sky-500 mb-4 text-gray-900"
+                            disabled={loading}
+                        />
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Synthetic Flow Prompt (Natural Language)</label>
+                        <textarea
+                            value={flowPrompt}
+                            onChange={(e) => setFlowPrompt(e.target.value)}
+                            placeholder="e.g., Navigate to the pricing page and click the subscribe button."
+                            rows={4}
+                            className="w-full p-3 rounded-lg bg-gray-100 border border-gray-300 focus:ring-sky-500 focus:border-sky-500 resize-none text-gray-900"
+                            disabled={loading}
+                        />
+                        <div className="flex flex-col gap-3 mt-4">
+                            <button onClick={handleEnhanceFlow} disabled={loading || !flowPrompt} className={`py-3 rounded-lg font-semibold transition-all duration-200 text-white shadow-lg ${loading ? 'bg-gray-400 cursor-not-allowed' : 'bg-indigo-600 hover:bg-indigo-700 focus:ring-4 focus:ring-indigo-500 focus:ring-opacity-50'}`}>
+                                ✨ Enhance Flow Prompt
+                            </button>
+                            <button onClick={startMonitoring} disabled={loading || !targetUrl || !flowPrompt} className={`py-3 rounded-lg font-semibold transition-all duration-200 shadow-lg ${loading ? 'bg-gray-400 cursor-not-allowed' : 'bg-sky-600 hover:bg-sky-700 focus:ring-4 focus:ring-sky-500 focus:ring-opacity-50'}`}>
+                                {loading ? 'Running Flow...' : 'Run Synthetic Test'}
+                            </button>
                         </div>
                     </div>
-                    
-                    <div className="lg:w-2/3 bg-white rounded-xl shadow-xl border border-gray-200 flex flex-col">
-                        <div className="flex border-b border-gray-200 px-4 pt-2">
-                            <button className={getTabClass('timeline')} onClick={() => setActiveTab('timeline')} disabled={!screenshotTimeline || screenshotTimeline.length === 0}>Visual Timeline</button>
-                            <button className={getTabClass('report')} onClick={() => setActiveTab('report')} disabled={!aiReport}>AI Incident Report</button>
-                            <button className={getTabClass('logs')} onClick={() => setActiveTab('logs')}>Raw Agent Logs</button>
-                        </div>
-                        <div className="flex-grow h-[600px] overflow-hidden">
-                            {activeTab === 'timeline' && <TimelineDisplay timeline={screenshotTimeline} logs={logs} />}
-                            {activeTab === 'logs' && <LogDisplay logs={logs} loading={loading} />}
-                            {activeTab === 'report' && (
-                                <div className="h-full bg-gray-100 p-6 rounded-b-xl overflow-y-auto text-gray-800 border border-t-0 border-gray-300">
-                                    {aiReport ? (
-                                        <>
-                                            <h3 className={`text-xl font-semibold mb-3 ${runStatus === 'FAILURE' ? 'text-red-700' : 'text-green-700'}`}>
-                                                {runStatus === 'FAILURE' ? 'Failure Root Cause Analysis' : 'Successful Run Summary'}
-                                            </h3>
-                                            <div className="bg-white p-4 rounded-lg shadow-inner border border-gray-200">
-                                                <p className="whitespace-pre-wrap">{aiReport}</p>
-                                            </div>
-                                        </>
-                                    ) : (
-                                        <p className="text-gray-500">Run the flow to generate an AI incident report.</p>
-                                    )}
-                                </div>
-                            )}
-                        </div>
+                    <div className="grid grid-cols-2 gap-4">
+                        <MetricCard title="Status" value={runStatus} color={statusClasses[runStatus].replace('bg-', 'text-').split(' ')[0]} />
+                        <MetricCard title="Execution Time" value={(runTimeMs / 1000).toFixed(2)} unit="s" color={runStatus === 'SUCCESS' ? 'text-green-600' : 'text-gray-500'} />
+                        <MetricCard title="Steps Executed" value={totalSteps} unit="steps" color={'text-cyan-600'} />
+                        <MetricCard title="Timeline Frames" value={screenshotTimeline.length} unit="frames" color={'text-purple-600'} />
                     </div>
                 </div>
-            </div>
+                
+                <div className="lg:w-2/3 bg-white rounded-xl shadow-xl border border-gray-200 flex flex-col">
+                    <div className="flex border-b border-gray-200 px-4 pt-2 shrink-0">
+                        <button className={getTabClass('timeline')} onClick={() => setActiveTab('timeline')} disabled={!screenshotTimeline || screenshotTimeline.length === 0}>Visual Timeline</button>
+                        <button className={getTabClass('report')} onClick={() => setActiveTab('report')} disabled={!aiReport}>AI Incident Report</button>
+                        <button className={getTabClass('logs')} onClick={() => setActiveTab('logs')}>Raw Agent Logs</button>
+                    </div>
+                    <div className="flex-grow overflow-y-auto">
+                        {activeTab === 'timeline' && <TimelineDisplay timeline={screenshotTimeline} logs={logs} />}
+                        {activeTab === 'logs' && <LogDisplay logs={logs} loading={loading} />}
+                        {activeTab === 'report' && (
+                            <div className="h-full bg-gray-100 p-6 rounded-b-xl overflow-y-auto text-gray-800 border border-t-0 border-gray-300">
+                                {aiReport ? (
+                                    <>
+                                        <h3 className={`text-xl font-semibold mb-3 ${runStatus === 'FAILURE' ? 'text-red-700' : 'text-green-700'}`}>
+                                            {runStatus === 'FAILURE' ? 'Failure Root Cause Analysis' : 'Successful Run Summary'}
+                                        </h3>
+                                        <div className="bg-white p-4 rounded-lg shadow-inner border border-gray-200">
+                                            <p className="whitespace-pre-wrap">{aiReport}</p>
+                                        </div>
+                                    </>
+                                ) : (
+                                    <p className="text-gray-500">Run the flow to generate an AI incident report.</p>
+                                )}
+                            </div>
+                        )}
+                    </div>
+                </div>
+            </main>
         </div>
     );
 }
