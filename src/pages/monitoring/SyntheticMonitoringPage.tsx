@@ -452,7 +452,7 @@ export default function SyntheticMonitoringPage() {
                             value={flowPrompt}
                             onChange={(e) => setFlowPrompt(e.target.value)}
                             placeholder="e.g., Navigate to the pricing page and click the subscribe button."
-                            rows={4}
+                            rows={12}
                             className="w-full p-3 rounded-lg bg-gray-100 border border-gray-300 focus:ring-sky-500 focus:border-sky-500 resize-none text-gray-900"
                             disabled={loading}
                         />
