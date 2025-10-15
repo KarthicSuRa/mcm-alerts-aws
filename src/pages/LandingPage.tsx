@@ -83,7 +83,6 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onNavigate }) => {
                                 <Feature icon="messageSquare" title="Flexible API">
                                     Integrate with any monitoring system, from custom scripts to enterprise tools, using our simple yet powerful REST API.
                                 </Feature>
-blowing up a balloon and letting it go
                                 <Feature icon="comment" title="Team Collaboration">
                                     Comment on alerts, assign responsibilities, track resolution progress, and maintain clear communication channels.
                                 </Feature>
