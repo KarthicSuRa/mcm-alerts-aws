@@ -329,8 +329,8 @@ type RunStatus = 'IDLE' | 'RUNNING' | 'SUCCESS' | 'FAILURE';
 type ActiveTab = 'timeline' | 'report' | 'logs';
 
 export default function SyntheticMonitoringPage() {
-    const [targetUrl, setTargetUrl] = useState('https://www.google.com');
-    const [flowPrompt, setFlowPrompt] = useState('Navigate to the homepage and assert the search bar is visible. Then type "weather" and click the search button.');
+    const [targetUrl, setTargetUrl] = useState('https://us.mcmworldwide.com/en_US/home');
+    const [flowPrompt, setFlowPrompt] = useState('Navigate to the homepage and assert the search bar is visible.');
     const [runStatus, setRunStatus] = useState<RunStatus>('IDLE');
     const [loading, setLoading] = useState(false);
     const [logs, setLogs] = useState<Log[]>([]);
