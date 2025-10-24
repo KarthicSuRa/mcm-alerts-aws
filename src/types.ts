@@ -7,6 +7,11 @@ export interface User {
   team_id?: string | null;
 }
 
+export interface Session {
+  access_token: string;
+  user: User;
+}
+
 export interface Team {
     id: string;
     name: string;

@@ -35,13 +35,13 @@ def register_device_handler(event, context):
         if not player_id:
             return make_response(400, {'error': 'Missing playerId'})
 
-        devices_table = dynamodb.Table('mcm-alerts-devices')
-        device_item = {
-            'player_id': player_id,
+        table = dynamodb.Table('mcm-alerts-onesignal-players')
+        item = {
             'user_id': user_id,
+            'player_id': player_id,
             'created_at': datetime.utcnow().isoformat(),
         }
-        devices_table.put_item(Item=device_item)
+        table.put_item(Item=item)
 
         return make_response(201, {'status': 'registered', 'playerId': player_id})
 
@@ -59,12 +59,12 @@ def unregister_device_handler(event, context):
         if not player_id:
             return make_response(400, {'error': 'Missing playerId in path'})
 
-        devices_table = dynamodb.Table('mcm-alerts-devices')
+        table = dynamodb.Table('mcm-alerts-onesignal-players')
         
-        devices_table.delete_item(
-            Key={'player_id': player_id},
-            ConditionExpression="user_id = :uid",
-            ExpressionAttributeValues={":uid": user_id}
+        table.delete_item(
+            Key={'user_id': user_id},
+            ConditionExpression="player_id = :pid",
+            ExpressionAttributeValues={":pid": player_id}
         )
 
         return make_response(200, {'status': 'unregistered', 'playerId': player_id})

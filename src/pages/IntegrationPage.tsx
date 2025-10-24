@@ -69,10 +69,13 @@ const IntegrationPage: React.FC<IntegrationPageProps> = ({
 
   const enrichedWebhooks = useMemo(() => {
     const topicsMap = new Map(topics.map(t => [t.id, t.name]));
-    return webhooks.map(webhook => ({
-      ...webhook,
-      topics: webhook.topic_id ? { name: topicsMap.get(webhook.topic_id) } : null,
-    }));
+    return webhooks.map(webhook => {
+      const topicName = webhook.topic_id ? topicsMap.get(webhook.topic_id) : undefined;
+      return {
+        ...webhook,
+        topics: topicName ? { name: topicName } : null,
+      };
+    });
   }, [webhooks, topics]);
 
   const handleWebhookAdded = (newWebhook: WebhookSource) => {
@@ -137,7 +140,7 @@ const IntegrationPage: React.FC<IntegrationPageProps> = ({
                     {loading ? (
                         <p>Loading...</p>
                     ) : webhooks.length > 0 ? (
-                        <WebhookList webhooks={enrichedWebhooks} onDelete={handleDeleteWebhook} />
+                        <WebhookList webhooks={enrichedWebhooks as (WebhookSource & { topics?: { name: string; } | null | undefined; })[]} onDelete={handleDeleteWebhook} />
                     ) : (
                         <div className="text-center py-8">
                             <p className="text-card-foreground/60">You haven't added any webhooks yet.</p>
