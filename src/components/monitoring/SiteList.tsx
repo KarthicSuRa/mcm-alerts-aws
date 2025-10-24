@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { MonitoredSite } from '../../types';
-import { supabase } from '../../lib/supabaseClient';
+import { awsClient } from '../../lib/awsClient';
 import { Button } from '../ui/Button';
 
 interface SiteListProps {
@@ -72,8 +72,7 @@ const SiteList: React.FC<SiteListProps> = ({ sites, loading, error, onSiteDelete
     const handleDelete = async (siteId: string) => {
         setShowConfirm(null);
         try {
-            const { error } = await supabase.from('monitored_sites').delete().eq('id', siteId);
-            if (error) throw error;
+            await awsClient.delete(`/monitored-sites/${siteId}`);
             onSiteDeleted();
         } catch (e: any) {
             console.error("Error deleting site:", e.message);

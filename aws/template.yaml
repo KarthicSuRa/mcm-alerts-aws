@@ -1,0 +1,309 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  A consolidated serverless application for mcm-alerts-vite, including a REST API, a WebSocket API, DynamoDB tables, and Lambda functions.
+
+Parameters:
+  OneSignalAppId:
+    Type: String
+    Description: Your OneSignal Application ID.
+  OneSignalRestApiKey:
+    Type: String
+    NoEcho: true
+    Description: Your OneSignal REST API Key.
+
+Globals:
+  Function:
+    Timeout: 15
+
+Resources:
+  # --- Authentication ---
+  CognitoUserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: mcm-alerts-users
+      Schema: [{Name: email, AttributeDataType: String, Mutable: false, Required: true}]
+      AutoVerifiedAttributes: [email]
+  CognitoUserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      UserPoolId: !Ref CognitoUserPool
+      ClientName: mcm-alerts-web-client
+      GenerateSecret: false
+
+  # --- API Gateways ---
+  RestApiGateway:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: prod
+      Cors: { AllowMethods: "'GET,POST,PUT,DELETE,OPTIONS'", AllowHeaders: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'", AllowOrigin: "''" }
+      Auth:
+        DefaultAuthorizer: CognitoAuthorizer
+        Authorizers:
+          CognitoAuthorizer: { UserPoolArn: !GetAtt CognitoUserPool.Arn }
+  WebSocketApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: prod
+      RouteSelectionExpression: "$request.body.action"
+
+  # --- Python Lambda Functions (API & WebSockets) ---
+  ApiFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: mcm-alerts-api-router
+      Runtime: python3.9
+      CodeUri: ./aws/
+      Handler: api_handler.router
+      Policies:
+        - DynamoDBCrudPolicy: { TableName: !Ref CommentsTable }
+        - DynamoDBCrudPolicy: { TableName: !Ref NotificationsTable }
+        - DynamoDBReadPolicy: { TableName: !Ref WebSocketConnectionsTable }
+        - Statement:
+          - Effect: Allow
+            Action: ['execute-api:ManageConnections']
+            Resource: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${WebSocketApi}/*"
+      Events:
+        AddComment: { Type: Api, Properties: { Path: /comments, Method: post, RestApiId: !Ref RestApiGateway } }
+        UpdateNotification: { Type: Api, Properties: { Path: /notifications/{notification_id}, Method: put, RestApiId: !Ref RestApiGateway } }
+  ConnectFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Runtime: python3.9
+      CodeUri: ./aws/
+      Handler: connection_handler.connect_handler
+      Environment: { Variables: { WEBSOCKET_CONNECTIONS_TABLE: !Ref WebSocketConnectionsTable } }
+      Policies: [ DynamoDBCrudPolicy: { TableName: !Ref WebSocketConnectionsTable } ]
+      Events:
+        ConnectEvent: { Type: Api, Properties: { Route: $connect, ApiId: !Ref WebSocketApi } }
+  DisconnectFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Runtime: python3.9
+      CodeUri: ./aws/
+      Handler: connection_handler.disconnect_handler
+      Environment: { Variables: { WEBSOCKET_CONNECTIONS_TABLE: !Ref WebSocketConnectionsTable } }
+      Policies: [ DynamoDBCrudPolicy: { TableName: !Ref WebSocketConnectionsTable } ]
+      Events:
+        DisconnectEvent: { Type: Api, Properties: { Route: $disconnect, ApiId: !Ref WebSocketApi } }
+  DefaultFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Runtime: python3.9
+      CodeUri: ./aws/
+      Handler: connection_handler.default_handler
+      Events:
+        DefaultEvent: { Type: Api, Properties: { Route: $default, ApiId: !Ref WebSocketApi } }
+
+  # --- Node.js Lambda Functions (Migrated from Supabase) ---
+  CreateNotificationLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: create-notification-lambda
+      Runtime: nodejs18.x
+      CodeUri: ./aws/create-notification-lambda/
+      Handler: index.handler
+      Environment:
+        Variables:
+          TOPICS_TABLE: !Ref TopicsTable
+          NOTIFICATIONS_TABLE: !Ref NotificationsTable
+          TOPIC_SUBSCRIPTIONS_TABLE: !Ref TopicSubscriptionsTable
+          ONESIGNAL_PLAYERS_TABLE: !Ref OneSignalPlayersTable
+          ONESIGNAL_APP_ID: !Ref OneSignalAppId
+          ONESIGNAL_REST_API_KEY: !Ref OneSignalRestApiKey
+      Policies:
+        - DynamoDBReadPolicy: { TableName: !Ref TopicsTable }
+        - DynamoDBCrudPolicy: { TableName: !Ref NotificationsTable }
+        - DynamoDBReadPolicy: { TableName: !Ref TopicSubscriptionsTable }
+        - DynamoDBReadPolicy: { TableName: !Ref OneSignalPlayersTable }
+      Events:
+        ApiEvent: { Type: Api, Properties: { Path: /create-notification, Method: post, RestApiId: !Ref RestApiGateway } }
+
+  SiteMonitoringLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: site-monitoring-lambda
+      Runtime: nodejs18.x
+      CodeUri: ./aws/site-monitoring-lambda/
+      Handler: index.handler
+      Environment:
+        Variables:
+          MONITORED_SITES_TABLE: !Ref MonitoredSitesTable
+          PING_LOGS_TABLE: !Ref PingLogsTable
+          NOTIFICATION_LAMBDA_NAME: !Ref CreateNotificationLambda
+      Policies:
+        - DynamoDBReadPolicy: { TableName: !Ref MonitoredSitesTable }
+        - DynamoDBCrudPolicy: { TableName: !Ref PingLogsTable }
+        - LambdaInvokePolicy: { FunctionName: !Ref CreateNotificationLambda }
+      Events:
+        ScheduledEvent:
+          Type: Schedule
+          Properties:
+            Schedule: rate(5 minutes) # Cron job to run every 5 minutes
+            Name: SiteMonitoringSchedule
+            Description: Triggers the site monitoring lambda function.
+
+  WebhookReceiverLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: webhook-receiver-lambda
+      Runtime: nodejs18.x
+      CodeUri: ./aws/webhook-receiver-lambda/
+      Handler: index.handler
+      Environment:
+        Variables:
+          WEBHOOK_SOURCES_TABLE: !Ref WebhookSourcesTable
+          WEBHOOK_EVENTS_TABLE: !Ref WebhookEventsTable
+          NOTIFICATIONS_TABLE: !Ref NotificationsTable
+      Policies:
+        - DynamoDBReadPolicy: { TableName: !Ref WebhookSourcesTable }
+        - DynamoDBCrudPolicy: { TableName: !Ref WebhookEventsTable }
+        - DynamoDBCrudPolicy: { TableName: !Ref NotificationsTable }
+      Events:
+        ApiEvent: { Type: Api, Properties: { Path: /webhooks, Method: post, RestApiId: !Ref RestApiGateway, Auth: { Authorizer: NONE } } } # Public endpoint
+
+  GetTopicSubscribersInfoLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: get-topic-subscribers-info-lambda
+      Runtime: nodejs18.x
+      CodeUri: ./aws/get-topic-subscribers-info-lambda/
+      Handler: index.handler
+      Environment:
+        Variables:
+          TOPIC_SUBSCRIPTIONS_TABLE: !Ref TopicSubscriptionsTable
+          PROFILES_TABLE: !Ref ProfilesTable
+      Policies:
+        - DynamoDBQueryPolicy: { TableName: !Ref TopicSubscriptionsTable, IndexName: topic_id-index }
+        - DynamoDBBatchGetPolicy: { TableName: !Ref ProfilesTable }
+      Events:
+        ApiEvent: { Type: Api, Properties: { Path: /get-topic-subscribers, Method: post, RestApiId: !Ref RestApiGateway } }
+
+  # --- DynamoDB Tables (Consolidated) ---
+  WebSocketConnectionsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: mcm-alerts-websocket-connections
+      AttributeDefinitions: [{AttributeName: connectionId, AttributeType: S}]
+      KeySchema: [{AttributeName: connectionId, KeyType: HASH}]
+      ProvisionedThroughput: {ReadCapacityUnits: 1, WriteCapacityUnits: 1}
+  CommentsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: mcm-alerts-comments
+      AttributeDefinitions: [{AttributeName: notification_id, AttributeType: S}, {AttributeName: id, AttributeType: S}]
+      KeySchema: [{AttributeName: notification_id, KeyType: HASH}, {AttributeName: id, KeyType: RANGE}]
+      ProvisionedThroughput: {ReadCapacityUnits: 1, WriteCapacityUnits: 1}
+  MonitoredSitesTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: mcm-alerts-monitored-sites
+      AttributeDefinitions: [{AttributeName: id, AttributeType: S}]
+      KeySchema: [{AttributeName: id, KeyType: HASH}]
+      ProvisionedThroughput: {ReadCapacityUnits: 1, WriteCapacityUnits: 1}
+  NotificationsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: mcm-alerts-notifications
+      AttributeDefinitions: [{AttributeName: id, AttributeType: S}]
+      KeySchema: [{AttributeName: id, KeyType: HASH}]
+      ProvisionedThroughput: {ReadCapacityUnits: 5, WriteCapacityUnits: 5}
+      GlobalSecondaryIndexes:
+        - IndexName: topic_id-status-index
+          KeySchema: [{AttributeName: topic_id, KeyType: HASH}, {AttributeName: status, KeyType: RANGE}]
+          Projection: {ProjectionType: ALL}
+          ProvisionedThroughput: {ReadCapacityUnits: 5, WriteCapacityUnits: 5}
+  OneSignalPlayersTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: mcm-alerts-onesignal-players
+      AttributeDefinitions: [{AttributeName: user_id, AttributeType: S}]
+      KeySchema: [{AttributeName: user_id, KeyType: HASH}]
+      ProvisionedThroughput: {ReadCapacityUnits: 1, WriteCapacityUnits: 1}
+  PingLogsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: mcm-alerts-ping-logs
+      AttributeDefinitions: [{AttributeName: site_id, AttributeType: S}, {AttributeName: checked_at, AttributeType: S}]
+      KeySchema: [{AttributeName: site_id, KeyType: HASH}, {AttributeName: checked_at, KeyType: RANGE}]
+      ProvisionedThroughput: {ReadCapacityUnits: 1, WriteCapacityUnits: 5}
+  ProfilesTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: mcm-alerts-profiles
+      AttributeDefinitions: [{AttributeName: id, AttributeType: S}]
+      KeySchema: [{AttributeName: id, KeyType: HASH}]
+      ProvisionedThroughput: {ReadCapacityUnits: 1, WriteCapacityUnits: 1}
+  SubscriptionsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: mcm-alerts-subscriptions
+      AttributeDefinitions: [{AttributeName: user_id, AttributeType: S}]
+      KeySchema: [{AttributeName: user_id, KeyType: HASH}]
+      ProvisionedThroughput: {ReadCapacityUnits: 1, WriteCapacityUnits: 1}
+  TeamMembersTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: mcm-alerts-team-members
+      AttributeDefinitions: [{AttributeName: team_id, AttributeType: S}, {AttributeName: user_id, AttributeType: S}]
+      KeySchema: [{AttributeName: team_id, KeyType: HASH}, {AttributeName: user_id, KeyType: RANGE}]
+      ProvisionedThroughput: {ReadCapacityUnits: 1, WriteCapacityUnits: 1}
+  TeamsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: mcm-alerts-teams
+      AttributeDefinitions: [{AttributeName: id, AttributeType: S}]
+      KeySchema: [{AttributeName: id, KeyType: HASH}]
+      ProvisionedThroughput: {ReadCapacityUnits: 1, WriteCapacityUnits: 1}
+  TopicSubscriptionsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: mcm-alerts-topic-subscriptions
+      AttributeDefinitions: [{AttributeName: topic_id, AttributeType: S}, {AttributeName: user_id, AttributeType: S}]
+      KeySchema: [{AttributeName: topic_id, KeyType: HASH}, {AttributeName: user_id, KeyType: RANGE}]
+      ProvisionedThroughput: {ReadCapacityUnits: 1, WriteCapacityUnits: 1}
+      GlobalSecondaryIndexes:
+        - IndexName: topic_id-index
+          KeySchema: [{AttributeName: topic_id, KeyType: HASH}]
+          Projection: {ProjectionType: KEYS_ONLY}
+          ProvisionedThroughput: {ReadCapacityUnits: 1, WriteCapacityUnits: 1}
+  TopicsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: mcm-alerts-topics
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+        - AttributeName: name
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+      ProvisionedThroughput: {ReadCapacityUnits: 1, WriteCapacityUnits: 1}
+      GlobalSecondaryIndexes:
+        - IndexName: name-index
+          KeySchema:
+            - AttributeName: name
+              KeyType: HASH
+          Projection: {ProjectionType: ALL}
+          ProvisionedThroughput: {ReadCapacityUnits: 1, WriteCapacityUnits: 1}
+  WebhookEventsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: mcm-alerts-webhook-events
+      AttributeDefinitions: [{AttributeName: id, AttributeType: S}]
+      KeySchema: [{AttributeName: id, KeyType: HASH}]
+      ProvisionedThroughput: {ReadCapacityUnits: 1, WriteCapacityUnits: 1}
+  WebhookSourcesTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: mcm-alerts-webhook-sources
+      AttributeDefinitions: [{AttributeName: id, AttributeType: S}]
+      KeySchema: [{AttributeName: id, KeyType: HASH}]
+      ProvisionedThroughput: {ReadCapacityUnits: 1, WriteCapacityUnits: 1}
+
+Outputs:
+  UserPoolId: { Description: "ID of the Cognito User Pool", Value: !Ref CognitoUserPool }
+  UserPoolClientId: { Description: "ID of the Cognito User Pool Client", Value: !Ref CognitoUserPoolClient }
+  ApiGatewayEndpoint: { Description: "Endpoint URL for the REST API Gateway", Value: !Sub "https://\${RestApiGateway}.execute-api.\${AWS::Region}.amazonaws.com/prod" }
+  WebSocketApiEndpoint: { Description: "Endpoint URL for the WebSocket API", Value: !Sub "wss://\${WebSocketApi}.execute-api.\${AWS::Region}.amazonaws.com/prod" }

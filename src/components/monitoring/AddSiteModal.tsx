@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { supabase } from '../../lib/supabaseClient';
+import { awsClient } from '../../lib/awsClient';
 import { Button } from '../ui/Button';
 import { countries } from '../../lib/countries';
 
@@ -40,20 +40,14 @@ export const AddSiteModal: React.FC<AddSiteModalProps> = ({ isOpen, onClose, onS
         throw new Error('Invalid country selected');
       }
 
-      const { error: insertError } = await supabase
-        .from('monitored_sites')
-        .insert([{
-          name,
-          url,
-          country: selectedCountry.code,
-          latitude: selectedCountry.latitude,
-          longitude: selectedCountry.longitude,
-        }]);
+      await awsClient.post('/monitored-sites', {
+        name,
+        url,
+        country: selectedCountry.code,
+        latitude: selectedCountry.latitude,
+        longitude: selectedCountry.longitude,
+      });
 
-      if (insertError) {
-        throw insertError;
-      }
-      
       onSiteAdded();
       onClose();
       setName('');

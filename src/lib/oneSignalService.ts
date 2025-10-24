@@ -1,5 +1,5 @@
 
-import { supabase } from './supabaseClient';
+import { awsClient } from './awsClient';
 import type { Notification, Severity } from '../types';
 
 declare global {
@@ -275,6 +275,8 @@ export class OneSignalService {
         throw new Error('Failed to get a player ID after opting in.');
       }
 
+      await this.registerDevice(playerId);
+
       console.log('✅ Successfully subscribed with player ID:', playerId);
       return playerId;
     } catch (error) {
@@ -287,8 +289,13 @@ export class OneSignalService {
     await this.initialize();
     if (!this.initialized) return;
 
+    const playerId = await this.getPlayerId();
+
     try {
         await window.OneSignal.User.PushSubscription.optOut();
+        if (playerId) {
+          await this.unregisterDevice(playerId);
+        }
         console.log('✅ Successfully unsubscribed.');
     } catch (error) {
       console.error('❌ Failed to unsubscribe:', error);
@@ -296,67 +303,24 @@ export class OneSignalService {
     }
   }
 
-  async savePlayerIdToDatabase(userId: string): Promise<void> {
-    const playerId = await this.getPlayerId();
-    if (!playerId) {
-      console.warn('🔔 No player ID available to save.');
-      return;
-    }
-
+  async registerDevice(playerId: string): Promise<void> {
     try {
-      console.log('🔔 Saving player ID to database for user:', userId);
-      const { error } = await supabase
-        .from('onesignal_players')
-        .upsert({ user_id: userId, player_id: playerId }, { onConflict: 'player_id' });
-
-      if (error) throw error;
-      console.log('✅ Player ID saved to database');
+      console.log('🔔 Registering device with backend...');
+      await awsClient.post('/devices', { playerId });
+      console.log('✅ Device registered with backend');
     } catch (error) {
-      console.error('❌ Error saving player ID to database:', error);
+      console.error('❌ Error registering device with backend:', error);
       throw error;
     }
   }
 
-  async removeAllPlayerIdsFromDatabase(userId: string): Promise<void> {
+  async unregisterDevice(playerId: string): Promise<void> {
     try {
-      console.log('🔔 Removing all player IDs from database for user:', userId);
-      const { error } = await supabase
-        .from('onesignal_players')
-        .delete()
-        .eq('user_id', userId);
-
-      if (error) {
-        console.error('❌ Failed to remove player IDs from database:', error);
-        throw error;
-      }
-      console.log('✅ All player IDs for user removed from database');
+      console.log('🔔 Unregistering device with backend...');
+      await awsClient.delete(`/devices/${playerId}`);
+      console.log('✅ Device unregistered with backend');
     } catch (error) {
-      console.error('❌ Error removing player IDs from database:', error);
-      throw error;
-    }
-  }
-
-  async removeCurrentPlayerIdFromDatabase(): Promise<void> {
-    const playerId = await this.getPlayerId();
-    if (!playerId) {
-      console.warn('🔔 No player ID available to remove.');
-      return;
-    }
-
-    try {
-      console.log('🔔 Removing current player ID from database:', playerId);
-      const { error } = await supabase
-        .from('onesignal_players')
-        .delete()
-        .eq('player_id', playerId);
-
-      if (error) {
-        console.error('❌ Failed to remove current player ID from database:', error);
-        throw error;
-      }
-      console.log('✅ Current player ID removed from database');
-    } catch (error) {
-      console.error('❌ Error removing current player ID from database:', error);
+      console.error('❌ Error unregistering device with backend:', error);
       throw error;
     }
   }

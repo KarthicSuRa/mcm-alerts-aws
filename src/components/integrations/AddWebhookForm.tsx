@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { supabase } from '../../lib/supabaseClient';
+import { awsClient } from '../../lib/awsClient';
 import { WebhookSource, Session, Topic } from '../../types';
 import { Button } from '../ui/Button';
 
@@ -27,24 +27,19 @@ export const AddWebhookForm: React.FC<AddWebhookFormProps> = ({ topics, onAdd, s
     setError(null);
     setLoading(true);
 
-    const { data, error: insertError } = await supabase
-      .from('webhook_sources')
-      .insert({
+    try {
+      const newWebhook = await awsClient.post('/webhook-sources', {
         name,
         description,
         source_type: sourceType,
         user_id: session.user.id,
         topic_id: topicId,
-      })
-      .select('*, topics(name)') // Re-fetch with topic name
-      .single();
-
-    setLoading(false);
-
-    if (insertError) {
-      setError(insertError.message);
-    } else if (data) {
-      onAdd(data as WebhookSource);
+      });
+      onAdd(newWebhook as WebhookSource);
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
     }
   };
 

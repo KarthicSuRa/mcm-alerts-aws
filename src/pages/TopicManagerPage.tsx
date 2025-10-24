@@ -1,11 +1,8 @@
 import React from 'react';
 import { Header } from '../components/layout/Header';
-import { Topic, Session, SystemStatusData, Notification, Database } from '../types';
+import { Topic, Session, SystemStatusData, Notification, Team } from '../types';
 import { TopicManager } from '../components/dashboard/TopicManager';
 import { Icon } from '../components/ui/Icon';
-
-// Define the Team type based on your database schema
-type Team = Database['public']['Tables']['teams']['Row'];
 
 interface TopicManagerPageProps {
   topics: Topic[];

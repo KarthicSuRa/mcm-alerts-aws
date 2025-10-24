@@ -4,9 +4,9 @@ import { Button } from '../ui/Button';
 import { Icon } from '../ui/Icon';
 
 const getWebhookUrl = (sourceId: string): string => {
-  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-  if (!supabaseUrl) return "VITE_SUPABASE_URL not set";
-  return `${supabaseUrl}/functions/v1/rapid-api?source_id=${sourceId}`;
+  const apiUrl = import.meta.env.VITE_API_URL;
+  if (!apiUrl) return "VITE_API_URL not set";
+  return `${apiUrl}/webhook?source_id=${sourceId}`;
 };
 
 // The props now expect a `topics` object that might contain the name

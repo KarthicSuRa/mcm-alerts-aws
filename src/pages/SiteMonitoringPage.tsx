@@ -8,7 +8,7 @@ import SiteMap from '../components/monitoring/SiteMap';
 import { AddSiteModal } from '../components/monitoring/AddSiteModal';
 import { Button } from '../components/ui/Button';
 import { type Notification, type SystemStatusData, type Session, type MonitoredSite } from '../types';
-import { supabase } from '../lib/supabaseClient';
+import { awsClient } from '../lib/awsClient';
 
 interface SiteMonitoringPageProps {
   session: Session;
@@ -64,16 +64,14 @@ export const SiteMonitoringPage: React.FC<SiteMonitoringPageProps> = ({
     setLoading(true);
     setError(null);
     try {
-      const { data: sitesData, error: sitesError } = await supabase.from('monitored_sites').select('*');
-      if (sitesError) throw new Error(`Failed to fetch sites: ${sitesError.message}`);
+      const sitesData = await awsClient.get('/monitored-sites');
       if (!sitesData) {
         setSites([]);
         setLoading(false);
         return;
       }
 
-      const { data: logsData, error: logsError } = await supabase.from('ping_logs').select('*').order('checked_at', { ascending: false });
-      if (logsError) throw new Error(`Failed to fetch ping logs: ${logsError.message}`);
+      const logsData = await awsClient.get('/ping-logs');
 
       const latestPings = new Map();
       if (logsData) {
@@ -84,7 +82,7 @@ export const SiteMonitoringPage: React.FC<SiteMonitoringPageProps> = ({
           }
       }
 
-      const formattedSites = sitesData.map(site => ({
+      const formattedSites = sitesData.map((site: MonitoredSite) => ({
         ...site,
         status: latestPings.has(site.id) ? (latestPings.get(site.id).is_up ? 'online' : 'offline') : 'unknown',
         last_checked: latestPings.has(site.id) ? latestPings.get(site.id).checked_at : null,
@@ -103,26 +101,6 @@ export const SiteMonitoringPage: React.FC<SiteMonitoringPageProps> = ({
 
   useEffect(() => {
     fetchSiteStatus();
-    
-    const channel = supabase
-      .channel('public:ping_logs')
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'ping_logs' }, (payload) => {
-          const newLog = payload.new as any;
-          setSites(currentSites =>
-            currentSites.map(site =>
-              site.id === newLog.site_id ? { ...site, status: newLog.is_up ? 'online' : 'offline', last_checked: newLog.checked_at, latest_ping: newLog } : site
-            )
-          );
-        })
-      .subscribe((status, err) => {
-          if (status === 'SUBSCRIBED') console.log('Realtime channel for ping_logs is active.');
-          else if (err) {
-            console.error('Realtime channel error:', err);
-            setError('Realtime connection failed. Please refresh.');
-          }
-      });
-
-    return () => { supabase.removeChannel(channel); };
   }, [fetchSiteStatus]);
 
   const { filteredSites, mapCenter, mapZoom } = useMemo(() => {

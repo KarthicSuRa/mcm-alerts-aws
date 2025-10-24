@@ -1,5 +1,6 @@
-import React, { useState, useEffect, Dispatch, SetStateAction } from 'react';
-import { supabase } from '../lib/supabaseClient';
+
+import React, { useState, useEffect, Dispatch, SetStateAction, useMemo } from 'react';
+import { awsClient } from '../lib/awsClient';
 import { Header } from '../components/layout/Header';
 import { WebhookSource, Topic, Session, Notification, SystemStatusData } from '../types';
 import { AddWebhookForm } from '../components/integrations/AddWebhookForm';
@@ -34,19 +35,12 @@ const IntegrationPage: React.FC<IntegrationPageProps> = ({
   const [error, setError] = useState<string | null>(null);
 
   const fetchWebhooks = async () => {
-    const { data, error } = await supabase
-      .from('webhook_sources')
-      .select(`
-        *,
-        topics ( name )
-      `)
-      .order('created_at', { ascending: false });
-    
-    if (error) {
+    try {
+        const data = await awsClient.get('/webhook-sources');
+        setWebhooks(data || []);
+    } catch (error: any) {
         console.error("Error fetching webhooks:", error)
         setError(error.message)
-    } else {
-        setWebhooks(data || []);
     }
   };
 
@@ -58,8 +52,7 @@ const IntegrationPage: React.FC<IntegrationPageProps> = ({
         await Promise.all([
             fetchWebhooks(),
             (async () => {
-                const { data: topicsData, error: topicsError } = await supabase.from('topics').select('*');
-                if (topicsError) throw topicsError;
+                const topicsData = await awsClient.get('/topics');
                 setTopics(topicsData || []);
             })()
         ]);
@@ -74,6 +67,14 @@ const IntegrationPage: React.FC<IntegrationPageProps> = ({
     fetchInitialData();
   }, [session]);
 
+  const enrichedWebhooks = useMemo(() => {
+    const topicsMap = new Map(topics.map(t => [t.id, t.name]));
+    return webhooks.map(webhook => ({
+      ...webhook,
+      topics: webhook.topic_id ? { name: topicsMap.get(webhook.topic_id) } : null,
+    }));
+  }, [webhooks, topics]);
+
   const handleWebhookAdded = (newWebhook: WebhookSource) => {
     fetchWebhooks();
     setShowAddForm(false);
@@ -83,11 +84,11 @@ const IntegrationPage: React.FC<IntegrationPageProps> = ({
     const originalWebhooks = [...webhooks];
     setWebhooks(webhooks.filter(wh => wh.id !== id));
 
-    const { error } = await supabase.from('webhook_sources').delete().eq('id', id);
-
-    if (error) {
-      setError(`Failed to delete webhook: ${error.message}`);
-      setWebhooks(originalWebhooks);
+    try {
+        await awsClient.delete(`/webhook-sources/${id}`);
+    } catch (error: any) {
+        setError(`Failed to delete webhook: ${error.message}`);
+        setWebhooks(originalWebhooks);
     }
   };
 
@@ -136,7 +137,7 @@ const IntegrationPage: React.FC<IntegrationPageProps> = ({
                     {loading ? (
                         <p>Loading...</p>
                     ) : webhooks.length > 0 ? (
-                        <WebhookList webhooks={webhooks} onDelete={handleDeleteWebhook} />
+                        <WebhookList webhooks={enrichedWebhooks} onDelete={handleDeleteWebhook} />
                     ) : (
                         <div className="text-center py-8">
                             <p className="text-card-foreground/60">You haven't added any webhooks yet.</p>

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { supabase } from '../lib/supabaseClient';
+import { awsClient } from '../lib/awsClient';
 import { MonitoredSite, PingLog, Incident } from '../types';
 
 const calculateIncidents = (pings: PingLog[]): Incident[] => {
@@ -82,30 +82,13 @@ const fetchSiteData = async (siteId: string): Promise<MonitoredSite | null> => {
         };
     }
 
-    const { data: monitoredSiteData, error: monitoredSiteError } = await supabase
-        .from('monitored_sites')
-        .select('*')
-        .eq('id', siteId)
-        .single();
-
-    if (monitoredSiteError) {
-        console.error(`Error fetching monitored site ${siteId}:`, monitoredSiteError);
-        throw new Error(`Failed to fetch site data: ${monitoredSiteError.message}`);
-    }
+    const monitoredSiteData = await awsClient.get(`/sites/${siteId}`);
 
     if (!monitoredSiteData) {
         return null;
     }
 
-    const { data: pingLogs, error: logsError } = await supabase
-        .from('ping_logs')
-        .select('*')
-        .eq('site_id', siteId)
-        .order('checked_at', { ascending: false });
-
-    if (logsError) {
-        console.error(`Error fetching ping logs for site ${siteId}:`, logsError);
-    }
+    const pingLogs = await awsClient.get(`/sites/${siteId}/pings`);
     
     const incidents = calculateIncidents(pingLogs || []);
 

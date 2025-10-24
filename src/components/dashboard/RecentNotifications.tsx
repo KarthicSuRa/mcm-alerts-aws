@@ -3,7 +3,7 @@ import { Notification, Severity, Topic, NotificationStatus, Session, Notificatio
 import { SEVERITY_INFO, STATUS_INFO } from '../../constants';
 import { Icon } from '../ui/Icon';
 import { NotificationDetail } from './NotificationDetail';
-import { supabase } from '../../lib/supabaseClient';
+import { awsClient } from '../../lib/awsClient';
 
 interface RecentNotificationsProps {
     notifications: Notification[];
@@ -42,19 +42,15 @@ export const RecentNotifications: React.FC<RecentNotificationsProps> = ({
             });
 
             if (userIds.size > 0) {
-                const { data, error } = await supabase
-                    .from('profiles')
-                    .select('id, full_name')
-                    .in('id', Array.from(userIds));
-
-                if (error) {
-                    console.error('Error fetching user names:', error);
-                } else {
+                try {
+                    const users = await awsClient.get(`/users?ids=${Array.from(userIds).join(',')}`);
                     const names = new Map<string, string>();
-                    data.forEach(profile => {
-                        names.set(profile.id, profile.full_name || 'Unknown User');
+                    users.forEach((user: User) => {
+                        names.set(user.id, user.full_name || 'Unknown User');
                     });
                     setUserNames(names);
+                } catch (error) {
+                    console.error('Error fetching user names:', error);
                 }
             }
         };
@@ -72,11 +68,7 @@ export const RecentNotifications: React.FC<RecentNotificationsProps> = ({
 
             setLoadingSubscribers(true);
             try {
-                const { data, error } = await supabase.functions.invoke('get-topic-subscribers-info', {
-                    body: { topic_id: infoModalNotification.topic_id },
-                });
-
-                if (error) throw error;
+                const data = await awsClient.get(`/topics/${infoModalNotification.topic_id}/subscribers`);
                 setSubscribers(data || []);
             } catch (error) {
                 console.error('Error fetching subscribers:', error);

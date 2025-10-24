@@ -35,7 +35,7 @@ const CodeBlock: React.FC<{ code: string }> = ({ code }) => {
 };
 
 export const ApiDocsPage: React.FC<ApiDocsPageProps> = ({ onNavigate, onLogout, isSidebarOpen, setIsSidebarOpen, notifications, openSettings, systemStatus, session }) => {
-  const endpointUrl = 'https://ledvmlsdazrzntvzbeww.supabase.co/functions/v1/hyper-worker';
+  const endpointUrl = 'https://1yag6oe04i.execute-api.us-east-1.amazonaws.com/prod/ingest';
 
   // Updated example to reflect new required fields
   const requestExample = JSON.stringify({

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { supabase } from '../../lib/supabaseClient';
+import { awsClient } from '../../lib/awsClient';
 import { Session } from '../../types';
 
 interface ProfileSetupModalProps {
@@ -23,13 +23,7 @@ export const ProfileSetupModal: React.FC<ProfileSetupModalProps> = ({ isOpen, on
         setError('');
 
         try {
-            const { error } = await supabase
-                .from('profiles')
-                .update({ full_name: fullName.trim() })
-                .eq('id', session.user.id);
-
-            if (error) throw error;
-
+            await awsClient.put(`/users/${session.user.id}`, { full_name: fullName.trim() });
             onProfileUpdate(fullName.trim());
             onClose();
         } catch (err: any) {

@@ -1,7 +1,7 @@
 import React, { useMemo, useEffect, useState } from 'react';
-import { Notification, Comment } from '../../types';
+import { Notification, Comment, User } from '../../types';
 import { Icon } from '../ui/Icon';
-import { supabase } from '../../lib/supabaseClient';
+import { awsClient } from '../../lib/awsClient';
 
 interface ActivityFeedProps {
     notifications: Notification[];
@@ -76,19 +76,15 @@ export const ActivityFeed: React.FC<ActivityFeedProps> = ({ notifications }) => 
             });
 
             if (userIds.size > 0) {
-                const { data, error } = await supabase
-                    .from('profiles')
-                    .select('id, full_name')
-                    .in('id', Array.from(userIds));
-
-                if (error) {
-                    console.error('Error fetching user names:', error);
-                } else {
+                try {
+                    const users = await awsClient.get(`/users?ids=${Array.from(userIds).join(',')}`);
                     const names = new Map<string, string>();
-                    data.forEach(profile => {
-                        names.set(profile.id, profile.full_name || 'Unknown User');
+                    users.forEach((user: User) => {
+                        names.set(user.id, user.full_name || 'Unknown User');
                     });
                     setUserNames(names);
+                } catch (error) {
+                    console.error('Error fetching user names:', error);
                 }
             }
         };

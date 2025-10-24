@@ -1,11 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { supabase } from '../lib/supabaseClient';
-import { Session, SystemStatusData, Notification, Database, Topic } from '../types';
+import { awsClient } from '../lib/awsClient';
+import { Session, SystemStatusData, Notification, Topic, User, Team } from '../types';
 import { Header } from '../components/layout/Header';
-
-type Profile = Database['public']['Tables']['profiles']['Row'];
-type TeamMember = Database['public']['Tables']['team_members']['Row'] & { profiles: Profile };
-type Team = Database['public']['Tables']['teams']['Row'] & { team_members: TeamMember[] };
 
 interface UserManagementPageProps {
     session: Session | null;
@@ -32,13 +28,13 @@ const UserManagementPage: React.FC<UserManagementPageProps> = ({
     onNavigate,
     onUpdateTopicTeam,
 }) => {
-    const [users, setUsers] = useState<Profile[]>([]);
+    const [users, setUsers] = useState<User[]>([]);
     const [teams, setTeams] = useState<Team[]>([]);
     const [loading, setLoading] = useState(true);
     const [newTeamName, setNewTeamName] = useState('');
     const [managingTeam, setManagingTeam] = useState<Team | null>(null);
     const [userToAdd, setUserToAdd] = useState('');
-    const [editingUser, setEditingUser] = useState<Profile | null>(null);
+    const [editingUser, setEditingUser] = useState<User | null>(null);
     const [editedFields, setEditedFields] = useState<{ full_name: string | null; app_role: string }>({ full_name: '', app_role: 'member' });
     const [activeTab, setActiveTab] = useState('users');
 
@@ -55,82 +51,58 @@ const UserManagementPage: React.FC<UserManagementPageProps> = ({
     };
 
     const getUsers = async () => {
-        const { data, error } = await supabase.from('profiles').select('*');
-        if (error) console.error('Error fetching users:', error);
-        else setUsers(data || []);
+        try {
+            const data = await awsClient.get('/users');
+            setUsers(data || []);
+        } catch (error: any) {
+            console.error('Error fetching users:', error);
+        }
     };
 
     const getTeams = async () => {
-        const { data, error } = await supabase.from('teams').select('*, team_members(*, profiles(*))');
-        if (error) console.error('Error fetching teams:', error);
-        else setTeams(data as Team[] || []);
+        try {
+            const data = await awsClient.get('/teams');
+            setTeams(data || []);
+        } catch (error: any) {
+            console.error('Error fetching teams:', error);
+        }
     };
 
     const createTeam = async () => {
         if (!newTeamName.trim() || !session?.user) return;
-        const { data, error } = await supabase
-            .from('teams')
-            .insert([{ name: newTeamName, created_by: session.user.id }])
-            .select('*, team_members(*, profiles(*))') // Reselect the team with its (empty) members
-            .single();
-    
-        if (error) {
-            alert(`Error creating team: ${error.message}`);
-        } else if (data) {
-            // Instantly update the UI with the new team
-            setTeams(prevTeams => [...prevTeams, data as Team]);
+        try {
+            const newTeam = await awsClient.post('/teams', { name: newTeamName, created_by: session.user.id });
+            setTeams(prevTeams => [...prevTeams, newTeam]);
             setNewTeamName('');
-        } else {
-            // Fallback if data isn't returned (e.g., RLS issues)
-            alert('Team created, but failed to update UI instantly. Refreshing data...');
-            await getTeams();
+        } catch (error: any) {
+            alert(`Error creating team: ${error.message}`);
         }
     };
     
     const handleUpdateUser = async () => {
         if (!editingUser) return;
-        const { data, error } = await supabase
-            .from('profiles')
-            .update({ full_name: editedFields.full_name, app_role: editedFields.app_role })
-            .eq('id', editingUser.id)
-            .select()
-            .single();
-
-        if (error) {
-            alert(`Error updating user: ${error.message}`);
-        } else if (data) {
-            setUsers(users.map(u => (u.id === data.id ? data : u)));
+        try {
+            const updatedUser = await awsClient.put(`/users/${editingUser.id}`, editedFields);
+            setUsers(users.map(u => (u.id === updatedUser.id ? updatedUser : u)));
             setEditingUser(null);
+        } catch (error: any) {
+            alert(`Error updating user: ${error.message}`);
         }
     };
 
     const addMemberToTeam = async () => {
         if (!userToAdd || !managingTeam) return;
-        const { data, error } = await supabase
-            .from('team_members')
-            .insert([{ team_id: managingTeam.id, user_id: userToAdd, team_role: 'member' }])
-            .select('*, profiles(*)') // Reselect the member with their profile
-            .single();
-    
-        if (error) {
-            alert(`Error adding member: ${error.message}`);
-        } else if (data) {
-            // Instantly update the UI
+        try {
+            const updatedTeam = await awsClient.post(`/teams/${managingTeam.id}/members`, { userId: userToAdd });
             setTeams(prevTeams => prevTeams.map(team =>
-                team.id === managingTeam.id
-                    ? { ...team, team_members: [...team.team_members, data as TeamMember] }
-                    : team
+                team.id === updatedTeam.id ? updatedTeam : team
             ));
             setUserToAdd('');
-        } else {
-             // Fallback if data isn't returned
-            alert('Member added, but failed to update UI instantly. Refreshing data...');
-            await getTeams();
+        } catch (error: any) {
+            alert(`Error adding member: ${error.message}`);
         }
     };
     
-    // This useEffect ensures that the 'managingTeam' state is always fresh
-    // when the underlying 'teams' data changes.
     useEffect(() => {
         if (managingTeam?.id) {
             const freshTeamData = teams.find(t => t.id === managingTeam.id);
@@ -140,26 +112,19 @@ const UserManagementPage: React.FC<UserManagementPageProps> = ({
 
     const removeMemberFromTeam = async (userId: string) => {
         if (!managingTeam) return;
-        const { error } = await supabase
-            .from('team_members')
-            .delete()
-            .match({ team_id: managingTeam.id, user_id: userId });
-
-        if (error) {
-            alert(`Error removing member: ${error.message}`);
-        } else {
-            // Instantly update the UI by filtering out the removed member
+        try {
+            const updatedTeam = await awsClient.delete(`/teams/${managingTeam.id}/members/${userId}`);
             setTeams(prevTeams => prevTeams.map(team =>
-                team.id === managingTeam.id
-                    ? { ...team, team_members: team.team_members.filter(m => m.user_id !== userId) }
-                    : team
+                team.id === updatedTeam.id ? updatedTeam : team
             ));
+        } catch (error: any) {
+            alert(`Error removing member: ${error.message}`);
         }
     };
     
     const usersNotInTeam = useMemo(() => {
-        if (!managingTeam) return users;
-        const memberIds = new Set(managingTeam.team_members.map(m => m.profiles.id));
+        if (!managingTeam || !managingTeam.members) return users;
+        const memberIds = new Set(managingTeam.members.map(m => m.id));
         return users.filter(u => !memberIds.has(u.id));
     }, [users, managingTeam]);
 
@@ -238,7 +203,7 @@ const UserManagementPage: React.FC<UserManagementPageProps> = ({
                                                             <button
                                                                 onClick={() => {
                                                                     setEditingUser(user);
-                                                                    setEditedFields({ full_name: user.full_name, app_role: user.app_role });
+                                                                    setEditedFields({ full_name: user.full_name ?? null, app_role: user.app_role || 'member' });
                                                                 }}
                                                                 className="text-indigo-600 hover:text-indigo-800 dark:text-indigo-400 dark:hover:text-indigo-300"
                                                             >
@@ -286,7 +251,7 @@ const UserManagementPage: React.FC<UserManagementPageProps> = ({
                                                 {teams.map(team => (
                                                     <tr key={team.id}>
                                                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-card-foreground dark:text-white">{team.name}</td>
-                                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-muted-foreground dark:text-gray-400">{team.team_members.length}</td>
+                                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-muted-foreground dark:text-gray-400">{team.members?.length || 0}</td>
                                                         <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                                                             <button onClick={() => setManagingTeam(team)} className="text-indigo-600 hover:text-indigo-800 dark:text-indigo-400 dark:hover:text-indigo-300">
                                                                 Manage
@@ -370,18 +335,18 @@ const UserManagementPage: React.FC<UserManagementPageProps> = ({
                                 </div>
 
                                 <div>
-                                    <h4 className="font-semibold text-foreground mb-2">Current Members ({managingTeam.team_members.length})</h4>
+                                    <h4 className="font-semibold text-foreground mb-2">Current Members ({managingTeam.members?.length || 0})</h4>
                                     <ul className="divide-y divide-border border rounded-md max-h-60 overflow-y-auto">
-                                        {managingTeam.team_members.map(member => (
-                                            <li key={member.user_id} className="px-4 py-3 flex justify-between items-center">
+                                        {managingTeam.members?.map(member => (
+                                            <li key={member.id} className="px-4 py-3 flex justify-between items-center">
                                                 <div>
-                                                    <p className="text-sm font-medium text-card-foreground">{member.profiles.full_name}</p>
-                                                    <p className="text-sm text-muted-foreground">{member.profiles.email}</p>
+                                                    <p className="text-sm font-medium text-card-foreground">{member.full_name}</p>
+                                                    <p className="text-sm text-muted-foreground">{member.email}</p>
                                                 </div>
-                                                <button onClick={() => removeMemberFromTeam(member.user_id)} className="text-red-500 hover:text-red-700 text-sm font-semibold">Remove</button>
+                                                <button onClick={() => removeMemberFromTeam(member.id)} className="text-red-500 hover:text-red-700 text-sm font-semibold">Remove</button>
                                             </li>
                                         ))}
-                                        {managingTeam.team_members.length === 0 && <li className="px-4 py-3 text-sm text-muted-foreground text-center">No members in this team yet.</li>}
+                                        {(!managingTeam.members || managingTeam.members.length === 0) && <li className="px-4 py-3 text-sm text-muted-foreground text-center">No members in this team yet.</li>}
                                     </ul>
                                 </div>
                             </div>

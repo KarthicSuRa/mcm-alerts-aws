@@ -1,9 +1,7 @@
 import React, { useState, useMemo } from 'react';
-import { Topic, Session, Database, User } from '../../types';
+import { Topic, Session, User, Team } from '../../types';
 import { Icon } from '../ui/Icon';
-import { supabase } from '../../lib/supabaseClient';
-
-type Team = Database['public']['Tables']['teams']['Row'];
+import { awsClient } from '../../lib/awsClient';
 
 interface TopicManagerProps {
     topics: Topic[];
@@ -73,11 +71,7 @@ export const TopicManager: React.FC<TopicManagerProps> = ({ topics, teams, sessi
         setSubscribers([]);
 
         try {
-            const { data, error } = await supabase.functions.invoke('get-topic-subscribers-info', {
-                body: { topic_id: topic.id },
-            });
-
-            if (error) throw error;
+            const data = await awsClient.get(`/topics/${topic.id}/subscribers`);
             setSubscribers(data || []);
         } catch (error) {
             console.error('Error fetching subscribers:', error);
@@ -278,7 +272,7 @@ const SubscriberModal = ({ topic, subscribers, loading, onClose }: { topic: Topi
                             return (
                                 <div key={user.id} className="flex items-center gap-4 py-2">
                                     <div className="w-10 h-10 rounded-full bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 flex items-center justify-center font-bold text-lg flex-shrink-0">
-                                        {user.avatar_url ? <img src={user.avatar_url} alt={user.full_name} className="rounded-full w-full h-full object-cover" /> : userInitial}
+                                        {user.avatar_url ? <img src={user.avatar_url} alt={user.full_name ?? 'User Avatar'} className="rounded-full w-full h-full object-cover" /> : userInitial}
                                     </div>
                                     <div className="flex-1">
                                         <p className="font-semibold text-md text-gray-900 dark:text-white">{user.full_name || 'Unknown User'}</p>
