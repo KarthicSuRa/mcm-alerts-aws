@@ -16,7 +16,7 @@ Globals:
   Function:
     Timeout: 15
 
-Resources:
+lResources:
   # --- Authentication ---
   CognitoUserPool:
     Type: AWS::Cognito::UserPool
@@ -36,24 +36,36 @@ Resources:
     Type: AWS::Serverless::Api
     Properties:
       StageName: prod
-      Cors: { AllowMethods: "'GET,POST,PUT,DELETE,OPTIONS'", AllowHeaders: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'", AllowOrigin: "''" }
+      Cors:
+        AllowMethods: "'GET,POST,PUT,DELETE,OPTIONS'"
+        AllowHeaders: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+        AllowOrigin: "'*'"
       Auth:
         DefaultAuthorizer: CognitoAuthorizer
         Authorizers:
-          CognitoAuthorizer: { UserPoolArn: !GetAtt CognitoUserPool.Arn }
+          CognitoAuthorizer:
+            UserPoolArn: !GetAtt CognitoUserPool.Arn
   WebSocketApi:
-    Type: AWS::Serverless::Api
+    Type: AWS::ApiGatewayV2::Api
     Properties:
-      StageName: prod
+      Name: mcm-alerts-websocket-api
+      ProtocolType: WEBSOCKET
       RouteSelectionExpression: "$request.body.action"
+  WebSocketApiStage:
+    Type: AWS::ApiGatewayV2::Stage
+    Properties:
+      ApiId: !Ref WebSocketApi
+      StageName: prod
+      AutoDeploy: true
+
 
   # --- Python Lambda Functions (API & WebSockets) ---
   ApiFunction:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: mcm-alerts-api-router
-      Runtime: python3.9
-      CodeUri: ./aws/
+      Runtime: python3.11
+      CodeUri: ./
       Handler: api_handler.router
       Policies:
         - DynamoDBCrudPolicy: { TableName: !Ref CommentsTable }
@@ -64,36 +76,69 @@ Resources:
             Action: ['execute-api:ManageConnections']
             Resource: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${WebSocketApi}/*"
       Events:
-        AddComment: { Type: Api, Properties: { Path: /comments, Method: post, RestApiId: !Ref RestApiGateway } }
-        UpdateNotification: { Type: Api, Properties: { Path: /notifications/{notification_id}, Method: put, RestApiId: !Ref RestApiGateway } }
+        AddComment:
+          Type: Api
+          Properties:
+            Path: /comments
+            Method: post
+            RestApiId: !Ref RestApiGateway
+        UpdateNotification:
+          Type: Api
+          Properties:
+            Path: /notifications/{notification_id}
+            Method: put
+            RestApiId: !Ref RestApiGateway
   ConnectFunction:
     Type: AWS::Serverless::Function
     Properties:
-      Runtime: python3.9
-      CodeUri: ./aws/
+      Runtime: python3.11
+      CodeUri: ./
       Handler: connection_handler.connect_handler
-      Environment: { Variables: { WEBSOCKET_CONNECTIONS_TABLE: !Ref WebSocketConnectionsTable } }
-      Policies: [ DynamoDBCrudPolicy: { TableName: !Ref WebSocketConnectionsTable } ]
+      Environment:
+        Variables:
+          WEBSOCKET_CONNECTIONS_TABLE: !Ref WebSocketConnectionsTable
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref WebSocketConnectionsTable
       Events:
-        ConnectEvent: { Type: Api, Properties: { Route: $connect, ApiId: !Ref WebSocketApi } }
+        ConnectEvent:
+          Type: Api
+          Properties:
+            Path: '$connect'
+            Method: ANY
+            RestApiId: !Ref WebSocketApi
   DisconnectFunction:
     Type: AWS::Serverless::Function
     Properties:
-      Runtime: python3.9
-      CodeUri: ./aws/
+      Runtime: python3.11
+      CodeUri: ./
       Handler: connection_handler.disconnect_handler
-      Environment: { Variables: { WEBSOCKET_CONNECTIONS_TABLE: !Ref WebSocketConnectionsTable } }
-      Policies: [ DynamoDBCrudPolicy: { TableName: !Ref WebSocketConnectionsTable } ]
+      Environment:
+        Variables:
+          WEBSOCKET_CONNECTIONS_TABLE: !Ref WebSocketConnectionsTable
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref WebSocketConnectionsTable
       Events:
-        DisconnectEvent: { Type: Api, Properties: { Route: $disconnect, ApiId: !Ref WebSocketApi } }
+        DisconnectEvent:
+          Type: Api
+          Properties:
+            Path: '$disconnect'
+            Method: ANY
+            RestApiId: !Ref WebSocketApi
   DefaultFunction:
     Type: AWS::Serverless::Function
     Properties:
-      Runtime: python3.9
-      CodeUri: ./aws/
+      Runtime: python3.11
+      CodeUri: ./
       Handler: connection_handler.default_handler
       Events:
-        DefaultEvent: { Type: Api, Properties: { Route: $default, ApiId: !Ref WebSocketApi } }
+        DefaultEvent:
+          Type: Api
+          Properties:
+            Path: '$default'
+            Method: ANY
+            RestApiId: !Ref WebSocketApi
 
   # --- Node.js Lambda Functions (Migrated from Supabase) ---
   CreateNotificationLambda:
@@ -101,7 +146,7 @@ Resources:
     Properties:
       FunctionName: create-notification-lambda
       Runtime: nodejs18.x
-      CodeUri: ./aws/create-notification-lambda/
+      CodeUri: ./create-notification-lambda/
       Handler: index.handler
       Environment:
         Variables:
@@ -117,14 +162,19 @@ Resources:
         - DynamoDBReadPolicy: { TableName: !Ref TopicSubscriptionsTable }
         - DynamoDBReadPolicy: { TableName: !Ref OneSignalPlayersTable }
       Events:
-        ApiEvent: { Type: Api, Properties: { Path: /create-notification, Method: post, RestApiId: !Ref RestApiGateway } }
+        ApiEvent:
+          Type: Api
+          Properties:
+            Path: /create-notification
+            Method: post
+            RestApiId: !Ref RestApiGateway
 
   SiteMonitoringLambda:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: site-monitoring-lambda
       Runtime: nodejs18.x
-      CodeUri: ./aws/site-monitoring-lambda/
+      CodeUri: ./site-monitoring-lambda/
       Handler: index.handler
       Environment:
         Variables:
@@ -148,7 +198,7 @@ Resources:
     Properties:
       FunctionName: webhook-receiver-lambda
       Runtime: nodejs18.x
-      CodeUri: ./aws/webhook-receiver-lambda/
+      CodeUri: ./webhook-receiver-lambda/
       Handler: index.handler
       Environment:
         Variables:
@@ -160,24 +210,37 @@ Resources:
         - DynamoDBCrudPolicy: { TableName: !Ref WebhookEventsTable }
         - DynamoDBCrudPolicy: { TableName: !Ref NotificationsTable }
       Events:
-        ApiEvent: { Type: Api, Properties: { Path: /webhooks, Method: post, RestApiId: !Ref RestApiGateway, Auth: { Authorizer: NONE } } } # Public endpoint
+        ApiEvent:
+          Type: Api
+          Properties:
+            Path: /webhooks
+            Method: post
+            RestApiId: !Ref RestApiGateway
+            Auth: { Authorizer: NONE } # Public endpoint
 
   GetTopicSubscribersInfoLambda:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: get-topic-subscribers-info-lambda
       Runtime: nodejs18.x
-      CodeUri: ./aws/get-topic-subscribers-info-lambda/
+      CodeUri: ./get-topic-subscribers-info-lambda/
       Handler: index.handler
       Environment:
         Variables:
           TOPIC_SUBSCRIPTIONS_TABLE: !Ref TopicSubscriptionsTable
           PROFILES_TABLE: !Ref ProfilesTable
       Policies:
-        - DynamoDBQueryPolicy: { TableName: !Ref TopicSubscriptionsTable, IndexName: topic_id-index }
+        - DynamoDBQueryPolicy:
+            TableName: !Ref TopicSubscriptionsTable
+            IndexName: topic_id-index
         - DynamoDBBatchGetPolicy: { TableName: !Ref ProfilesTable }
       Events:
-        ApiEvent: { Type: Api, Properties: { Path: /get-topic-subscribers, Method: post, RestApiId: !Ref RestApiGateway } }
+        ApiEvent:
+          Type: Api
+          Properties:
+            Path: /get-topic-subscribers
+            Method: post
+            RestApiId: !Ref RestApiGateway
 
   # --- DynamoDB Tables (Consolidated) ---
   WebSocketConnectionsTable:
@@ -303,7 +366,15 @@ Resources:
       ProvisionedThroughput: {ReadCapacityUnits: 1, WriteCapacityUnits: 1}
 
 Outputs:
-  UserPoolId: { Description: "ID of the Cognito User Pool", Value: !Ref CognitoUserPool }
-  UserPoolClientId: { Description: "ID of the Cognito User Pool Client", Value: !Ref CognitoUserPoolClient }
-  ApiGatewayEndpoint: { Description: "Endpoint URL for the REST API Gateway", Value: !Sub "https://\${RestApiGateway}.execute-api.\${AWS::Region}.amazonaws.com/prod" }
-  WebSocketApiEndpoint: { Description: "Endpoint URL for the WebSocket API", Value: !Sub "wss://\${WebSocketApi}.execute-api.\${AWS::Region}.amazonaws.com/prod" }
+  UserPoolId:
+    Description: "ID of the Cognito User Pool"
+    Value: !Ref CognitoUserPool
+  UserPoolClientId:
+    Description: "ID of the Cognito User Pool Client"
+    Value: !Ref CognitoUserPoolClient
+  ApiGatewayEndpoint:
+    Description: "Endpoint URL for the REST API Gateway"
+    Value: !Sub "https://${RestApiGateway}.execute-api.${AWS::Region}.amazonaws.com/prod"
+  WebSocketApiEndpoint:
+    Description: "Endpoint URL for the WebSocket API"
+    Value: !Sub "wss://${WebSocketApi}.execute-api.${AWS::Region}.amazonaws.com/prod"
