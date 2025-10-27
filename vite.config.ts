@@ -63,4 +63,7 @@ export default defineConfig({
     outDir: 'dist',
     sourcemap: true,
   },
+  define: {
+    global: 'window',
+  },
 });

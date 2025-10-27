@@ -1,0 +1,740 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: 'A consolidated serverless application for mcm-alerts-vite, including
+  a REST API, a WebSocket API, DynamoDB tables, and Lambda functions.
+
+  '
+Parameters:
+  OneSignalAppId:
+    Type: String
+    Description: Your OneSignal Application ID.
+  OneSignalRestApiKey:
+    Type: String
+    NoEcho: true
+    Description: Your OneSignal REST API Key.
+Globals:
+  Function:
+    Timeout: 15
+Resources:
+  WebAppS3BucketV2:
+    Type: AWS::S3::Bucket
+  WebAppOAC:
+    Type: AWS::CloudFront::OriginAccessControl
+    Properties:
+      OriginAccessControlConfig:
+        Name: mcm-alerts-s3-oac
+        OriginAccessControlOriginType: s3
+        SigningBehavior: always
+        SigningProtocol: sigv4
+  WebAppS3BucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket:
+        Ref: WebAppS3BucketV2
+      PolicyDocument:
+        Statement:
+        - Sid: CloudFrontRead
+          Effect: Allow
+          Principal:
+            Service: cloudfront.amazonaws.com
+          Action: s3:GetObject
+          Resource:
+            Fn::Sub: arn:aws:s3:::${WebAppS3BucketV2}/*
+          Condition:
+            StringEquals:
+              AWS:SourceArn:
+                Fn::Sub: arn:aws:cloudfront::${AWS::AccountId}:distribution/${WebAppCloudFrontDistribution}
+  WebAppCloudFrontDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        DefaultRootObject: index.html
+        Origins:
+        - Id: S3Origin
+          DomainName:
+            Fn::GetAtt:
+            - WebAppS3BucketV2
+            - RegionalDomainName
+          OriginAccessControlId:
+            Fn::GetAtt:
+            - WebAppOAC
+            - Id
+          S3OriginConfig: {}
+        DefaultCacheBehavior:
+          TargetOriginId: S3Origin
+          ViewerProtocolPolicy: redirect-to-https
+          AllowedMethods:
+          - GET
+          - HEAD
+          - OPTIONS
+          CachedMethods:
+          - GET
+          - HEAD
+          Compress: true
+          ForwardedValues:
+            QueryString: false
+            Cookies:
+              Forward: none
+        ViewerCertificate:
+          CloudFrontDefaultCertificate: true
+  CognitoUserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: mcm-alerts-users
+      Schema:
+      - Name: email
+        AttributeDataType: String
+        Mutable: false
+        Required: true
+      AutoVerifiedAttributes:
+      - email
+  CognitoUserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      UserPoolId:
+        Ref: CognitoUserPool
+      ClientName: mcm-alerts-web-client
+      GenerateSecret: false
+  CognitoIdentityPool:
+    Type: AWS::Cognito::IdentityPool
+    Properties:
+      IdentityPoolName:
+        Fn::Sub: ${AWS::StackName}-IdentityPool
+      AllowUnauthenticatedIdentities: true
+      CognitoIdentityProviders:
+      - ClientId:
+          Ref: CognitoUserPoolClient
+        ProviderName:
+          Fn::GetAtt:
+          - CognitoUserPool
+          - ProviderName
+  CognitoIdentityPoolRoleAttachment:
+    Type: AWS::Cognito::IdentityPoolRoleAttachment
+    Properties:
+      IdentityPoolId:
+        Ref: CognitoIdentityPool
+      Roles:
+        authenticated:
+          Fn::GetAtt:
+          - CognitoAuthRole
+          - Arn
+        unauthenticated:
+          Fn::GetAtt:
+          - CognitoUnauthRole
+          - Arn
+  CognitoAuthRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Federated: cognito-identity.amazonaws.com
+          Action: sts:AssumeRoleWithWebIdentity
+          Condition:
+            StringEquals:
+              cognito-identity.amazonaws.com:aud:
+                Ref: CognitoIdentityPool
+            ForAnyValue:StringLike:
+              cognito-identity.amazonaws.com:amr: authenticated
+      Policies:
+      - PolicyName: CognitoAuthorizedPolicy
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Effect: Allow
+            Action:
+            - mobileanalytics:PutEvents
+            - cognito-sync:*
+            - cognito-identity:*
+            Resource: '*'
+          - Effect: Allow
+            Action:
+            - execute-api:Invoke
+            Resource:
+              Fn::Sub: arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${RestApiGateway}/*
+  CognitoUnauthRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Federated: cognito-identity.amazonaws.com
+          Action: sts:AssumeRoleWithWebIdentity
+          Condition:
+            StringEquals:
+              cognito-identity.amazonaws.com:aud:
+                Ref: CognitoIdentityPool
+            ForAnyValue:StringLike:
+              cognito-identity.amazonaws.com:amr: unauthenticated
+      Policies:
+      - PolicyName: CognitoUnauthorizedPolicy
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Effect: Allow
+            Action:
+            - mobileanalytics:PutEvents
+            - cognito-sync:*
+            Resource: '*'
+  RestApiGateway:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: prod
+      Cors:
+        AllowMethods: '''GET,POST,PUT,DELETE,OPTIONS'''
+        AllowHeaders: '''Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'''
+        AllowOrigin: '''''*'''''
+      Auth:
+        DefaultAuthorizer: CognitoAuthorizer
+        Authorizers:
+          CognitoAuthorizer:
+            UserPoolArn:
+              Fn::GetAtt:
+              - CognitoUserPool
+              - Arn
+  WebSocketApi:
+    Type: AWS::ApiGatewayV2::Api
+    Properties:
+      Name: mcm-alerts-websocket-api
+      ProtocolType: WEBSOCKET
+      RouteSelectionExpression: $request.body.action
+  WebSocketApiStage:
+    Type: AWS::ApiGatewayV2::Stage
+    Properties:
+      ApiId:
+        Ref: WebSocketApi
+      StageName: prod
+      AutoDeploy: true
+  ApiFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: mcm-alerts-api-router
+      Runtime: python3.11
+      CodeUri: s3://mcm-alerts-sam-artifacts-12345/a4ab465acf5fd84b4e802b8c13b18f57
+      Handler: api_handler.router
+      Policies:
+      - DynamoDBCrudPolicy:
+          TableName:
+            Ref: CommentsTable
+      - DynamoDBCrudPolicy:
+          TableName:
+            Ref: NotificationsTable
+      - DynamoDBReadPolicy:
+          TableName:
+            Ref: WebSocketConnectionsTable
+      - Statement:
+        - Effect: Allow
+          Action:
+          - execute-api:ManageConnections
+          Resource:
+            Fn::Sub: arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${WebSocketApi}/*
+      Events:
+        AddComment:
+          Type: Api
+          Properties:
+            Path: /comments
+            Method: post
+            RestApiId:
+              Ref: RestApiGateway
+        UpdateNotification:
+          Type: Api
+          Properties:
+            Path: /notifications/{notification_id}
+            Method: put
+            RestApiId:
+              Ref: RestApiGateway
+  ConnectFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Runtime: python3.11
+      CodeUri: s3://mcm-alerts-sam-artifacts-12345/a4ab465acf5fd84b4e802b8c13b18f57
+      Handler: connection_handler.connect_handler
+      Environment:
+        Variables:
+          WEBSOCKET_CONNECTIONS_TABLE:
+            Ref: WebSocketConnectionsTable
+      Policies:
+      - DynamoDBCrudPolicy:
+          TableName:
+            Ref: WebSocketConnectionsTable
+      Events:
+        ConnectEvent:
+          Type: Api
+          Properties:
+            Path: $connect
+            Method: ANY
+            RestApiId:
+              Ref: WebSocketApi
+  DisconnectFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Runtime: python3.11
+      CodeUri: s3://mcm-alerts-sam-artifacts-12345/a4ab465acf5fd84b4e802b8c13b18f57
+      Handler: connection_handler.disconnect_handler
+      Environment:
+        Variables:
+          WEBSOCKET_CONNECTIONS_TABLE:
+            Ref: WebSocketConnectionsTable
+      Policies:
+      - DynamoDBCrudPolicy:
+          TableName:
+            Ref: WebSocketConnectionsTable
+      Events:
+        DisconnectEvent:
+          Type: Api
+          Properties:
+            Path: $disconnect
+            Method: ANY
+            RestApiId:
+              Ref: WebSocketApi
+  DefaultFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Runtime: python3.11
+      CodeUri: s3://mcm-alerts-sam-artifacts-12345/a4ab465acf5fd84b4e802b8c13b18f57
+      Handler: connection_handler.default_handler
+      Events:
+        DefaultEvent:
+          Type: Api
+          Properties:
+            Path: $default
+            Method: ANY
+            RestApiId:
+              Ref: WebSocketApi
+  CreateNotificationLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: create-notification-lambda
+      Runtime: nodejs18.x
+      CodeUri: s3://mcm-alerts-sam-artifacts-12345/7ed5aa50b22bb4e8b8111917eccb1082
+      Handler: index.handler
+      Environment:
+        Variables:
+          TOPICS_TABLE:
+            Ref: TopicsTable
+          NOTIFICATIONS_TABLE:
+            Ref: NotificationsTable
+          TOPIC_SUBSCRIPTIONS_TABLE:
+            Ref: TopicSubscriptionsTable
+          ONESIGNAL_PLAYERS_TABLE:
+            Ref: OneSignalPlayersTable
+          ONESIGNAL_APP_ID:
+            Ref: OneSignalAppId
+          ONESIGNAL_REST_API_KEY:
+            Ref: OneSignalRestApiKey
+      Policies:
+      - DynamoDBReadPolicy:
+          TableName:
+            Ref: TopicsTable
+      - DynamoDBCrudPolicy:
+          TableName:
+            Ref: NotificationsTable
+      - DynamoDBReadPolicy:
+          TableName:
+            Ref: TopicSubscriptionsTable
+      - DynamoDBReadPolicy:
+          TableName:
+            Ref: OneSignalPlayersTable
+      Events:
+        ApiEvent:
+          Type: Api
+          Properties:
+            Path: /create-notification
+            Method: post
+            RestApiId:
+              Ref: RestApiGateway
+  SiteMonitoringLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: site-monitoring-lambda
+      Runtime: nodejs18.x
+      CodeUri: s3://mcm-alerts-sam-artifacts-12345/3def022c2cecefbff211d43174ecdfb7
+      Handler: index.handler
+      Environment:
+        Variables:
+          MONITORED_SITES_TABLE:
+            Ref: MonitoredSitesTable
+          PING_LOGS_TABLE:
+            Ref: PingLogsTable
+          NOTIFICATION_LAMBDA_NAME:
+            Ref: CreateNotificationLambda
+      Policies:
+      - DynamoDBReadPolicy:
+          TableName:
+            Ref: MonitoredSitesTable
+      - DynamoDBCrudPolicy:
+          TableName:
+            Ref: PingLogsTable
+      - LambdaInvokePolicy:
+          FunctionName:
+            Ref: CreateNotificationLambda
+      Events:
+        ScheduledEvent:
+          Type: Schedule
+          Properties:
+            Schedule: rate(5 minutes)
+            Name: SiteMonitoringSchedule
+            Description: Triggers the site monitoring lambda function.
+  WebhookReceiverLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: webhook-receiver-lambda
+      Runtime: nodejs18.x
+      CodeUri: s3://mcm-alerts-sam-artifacts-12345/c4ab8e0891707e4368e48df061a70453
+      Handler: index.handler
+      Environment:
+        Variables:
+          WEBHOOK_SOURCES_TABLE:
+            Ref: WebhookSourcesTable
+          WEBHOOK_EVENTS_TABLE:
+            Ref: WebhookEventsTable
+          NOTIFICATIONS_TABLE:
+            Ref: NotificationsTable
+      Policies:
+      - DynamoDBReadPolicy:
+          TableName:
+            Ref: WebhookSourcesTable
+      - DynamoDBCrudPolicy:
+          TableName:
+            Ref: WebhookEventsTable
+      - DynamoDBCrudPolicy:
+          TableName:
+            Ref: NotificationsTable
+      Events:
+        ApiEvent:
+          Type: Api
+          Properties:
+            Path: /webhooks
+            Method: post
+            RestApiId:
+              Ref: RestApiGateway
+            Auth:
+              Authorizer: NONE
+  GetTopicSubscribersInfoLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service: lambda.amazonaws.com
+          Action: sts:AssumeRole
+      ManagedPolicyArns:
+      - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+      - PolicyName: DynamoDBAccess
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Effect: Allow
+            Action:
+            - dynamodb:Query
+            - dynamodb:GetItem
+            - dynamodb:Scan
+            Resource:
+            - Fn::GetAtt:
+              - TopicSubscriptionsTable
+              - Arn
+            - Fn::Sub: ${TopicSubscriptionsTable.Arn}/index/*
+          - Effect: Allow
+            Action:
+            - dynamodb:GetItem
+            - dynamodb:BatchGetItem
+            Resource:
+            - Fn::GetAtt:
+              - ProfilesTable
+              - Arn
+  GetTopicSubscribersInfoLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: get-topic-subscribers-info-lambda
+      Runtime: nodejs18.x
+      CodeUri: s3://mcm-alerts-sam-artifacts-12345/22e686f253ca3ed545331e7d5d585813
+      Handler: index.handler
+      Role:
+        Fn::GetAtt:
+        - GetTopicSubscribersInfoLambdaRole
+        - Arn
+      Environment:
+        Variables:
+          TOPIC_SUBSCRIPTIONS_TABLE:
+            Ref: TopicSubscriptionsTable
+          PROFILES_TABLE:
+            Ref: ProfilesTable
+      Events:
+        ApiEvent:
+          Type: Api
+          Properties:
+            Path: /get-topic-subscribers
+            Method: post
+            RestApiId:
+              Ref: RestApiGateway
+  WebSocketConnectionsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: mcm-alerts-websocket-connections
+      AttributeDefinitions:
+      - AttributeName: connectionId
+        AttributeType: S
+      KeySchema:
+      - AttributeName: connectionId
+        KeyType: HASH
+      ProvisionedThroughput:
+        ReadCapacityUnits: 1
+        WriteCapacityUnits: 1
+  CommentsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: mcm-alerts-comments
+      AttributeDefinitions:
+      - AttributeName: notification_id
+        AttributeType: S
+      - AttributeName: id
+        AttributeType: S
+      KeySchema:
+      - AttributeName: notification_id
+        KeyType: HASH
+      - AttributeName: id
+        KeyType: RANGE
+      ProvisionedThroughput:
+        ReadCapacityUnits: 1
+        WriteCapacityUnits: 1
+  MonitoredSitesTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: mcm-alerts-monitored-sites
+      AttributeDefinitions:
+      - AttributeName: id
+        AttributeType: S
+      KeySchema:
+      - AttributeName: id
+        KeyType: HASH
+      ProvisionedThroughput:
+        ReadCapacityUnits: 1
+        WriteCapacityUnits: 1
+  NotificationsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: mcm-alerts-notifications
+      AttributeDefinitions:
+      - AttributeName: id
+        AttributeType: S
+      - AttributeName: topic_id
+        AttributeType: S
+      - AttributeName: status
+        AttributeType: S
+      KeySchema:
+      - AttributeName: id
+        KeyType: HASH
+      ProvisionedThroughput:
+        ReadCapacityUnits: 5
+        WriteCapacityUnits: 5
+      GlobalSecondaryIndexes:
+      - IndexName: topic_id-status-index
+        KeySchema:
+        - AttributeName: topic_id
+          KeyType: HASH
+        - AttributeName: status
+          KeyType: RANGE
+        Projection:
+          ProjectionType: ALL
+        ProvisionedThroughput:
+          ReadCapacityUnits: 5
+          WriteCapacityUnits: 5
+  OneSignalPlayersTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: mcm-alerts-onesignal-players
+      AttributeDefinitions:
+      - AttributeName: user_id
+        AttributeType: S
+      KeySchema:
+      - AttributeName: user_id
+        KeyType: HASH
+      ProvisionedThroughput:
+        ReadCapacityUnits: 1
+        WriteCapacityUnits: 1
+  PingLogsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: mcm-alerts-ping-logs
+      AttributeDefinitions:
+      - AttributeName: site_id
+        AttributeType: S
+      - AttributeName: checked_at
+        AttributeType: S
+      KeySchema:
+      - AttributeName: site_id
+        KeyType: HASH
+      - AttributeName: checked_at
+        KeyType: RANGE
+      ProvisionedThroughput:
+        ReadCapacityUnits: 1
+        WriteCapacityUnits: 5
+  ProfilesTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: mcm-alerts-profiles
+      AttributeDefinitions:
+      - AttributeName: id
+        AttributeType: S
+      KeySchema:
+      - AttributeName: id
+        KeyType: HASH
+      ProvisionedThroughput:
+        ReadCapacityUnits: 1
+        WriteCapacityUnits: 1
+  SubscriptionsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: mcm-alerts-subscriptions
+      AttributeDefinitions:
+      - AttributeName: user_id
+        AttributeType: S
+      KeySchema:
+      - AttributeName: user_id
+        KeyType: HASH
+      ProvisionedThroughput:
+        ReadCapacityUnits: 1
+        WriteCapacityUnits: 1
+  TeamMembersTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: mcm-alerts-team-members
+      AttributeDefinitions:
+      - AttributeName: team_id
+        AttributeType: S
+      - AttributeName: user_id
+        AttributeType: S
+      KeySchema:
+      - AttributeName: team_id
+        KeyType: HASH
+      - AttributeName: user_id
+        KeyType: RANGE
+      ProvisionedThroughput:
+        ReadCapacityUnits: 1
+        WriteCapacityUnits: 1
+  TeamsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: mcm-alerts-teams
+      AttributeDefinitions:
+      - AttributeName: id
+        AttributeType: S
+      KeySchema:
+      - AttributeName: id
+        KeyType: HASH
+      ProvisionedThroughput:
+        ReadCapacityUnits: 1
+        WriteCapacityUnits: 1
+  TopicSubscriptionsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: mcm-alerts-topic-subscriptions
+      AttributeDefinitions:
+      - AttributeName: topic_id
+        AttributeType: S
+      - AttributeName: user_id
+        AttributeType: S
+      KeySchema:
+      - AttributeName: topic_id
+        KeyType: HASH
+      - AttributeName: user_id
+        KeyType: RANGE
+      ProvisionedThroughput:
+        ReadCapacityUnits: 1
+        WriteCapacityUnits: 1
+      GlobalSecondaryIndexes:
+      - IndexName: topic_id-index
+        KeySchema:
+        - AttributeName: topic_id
+          KeyType: HASH
+        Projection:
+          ProjectionType: KEYS_ONLY
+        ProvisionedThroughput:
+          ReadCapacityUnits: 1
+          WriteCapacityUnits: 1
+  TopicsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: mcm-alerts-topics
+      AttributeDefinitions:
+      - AttributeName: id
+        AttributeType: S
+      - AttributeName: name
+        AttributeType: S
+      KeySchema:
+      - AttributeName: id
+        KeyType: HASH
+      ProvisionedThroughput:
+        ReadCapacityUnits: 1
+        WriteCapacityUnits: 1
+      GlobalSecondaryIndexes:
+      - IndexName: name-index
+        KeySchema:
+        - AttributeName: name
+          KeyType: HASH
+        Projection:
+          ProjectionType: ALL
+        ProvisionedThroughput:
+          ReadCapacityUnits: 1
+          WriteCapacityUnits: 1
+  WebhookEventsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: mcm-alerts-webhook-events
+      AttributeDefinitions:
+      - AttributeName: id
+        AttributeType: S
+      KeySchema:
+      - AttributeName: id
+        KeyType: HASH
+      ProvisionedThroughput:
+        ReadCapacityUnits: 1
+        WriteCapacityUnits: 1
+  WebhookSourcesTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: mcm-alerts-webhook-sources
+      AttributeDefinitions:
+      - AttributeName: id
+        AttributeType: S
+      KeySchema:
+      - AttributeName: id
+        KeyType: HASH
+      ProvisionedThroughput:
+        ReadCapacityUnits: 1
+        WriteCapacityUnits: 1
+Outputs:
+  UserPoolId:
+    Description: ID of the Cognito User Pool
+    Value:
+      Ref: CognitoUserPool
+  UserPoolClientId:
+    Description: ID of the Cognito User Pool Client
+    Value:
+      Ref: CognitoUserPoolClient
+  IdentityPoolId:
+    Description: ID of the Cognito Identity Pool
+    Value:
+      Ref: CognitoIdentityPool
+  ApiGatewayEndpoint:
+    Description: Endpoint URL for the REST API Gateway
+    Value:
+      Fn::Sub: https://${RestApiGateway}.execute-api.${AWS::Region}.amazonaws.com/prod
+  WebSocketApiEndpoint:
+    Description: Endpoint URL for the WebSocket API
+    Value:
+      Fn::Sub: wss://${WebSocketApi}.execute-api.${AWS::Region}.amazonaws.com/prod
+  CloudFrontURL:
+    Description: URL for the CloudFront distribution
+    Value:
+      Fn::GetAtt:
+      - WebAppCloudFrontDistribution
+      - DomainName
