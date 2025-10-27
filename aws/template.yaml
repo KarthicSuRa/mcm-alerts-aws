@@ -17,6 +17,63 @@ Globals:
     Timeout: 15
 
 Resources:
+  WebAppS3BucketV2:
+    Type: AWS::S3::Bucket
+
+  WebAppOAC:
+    Type: AWS::CloudFront::OriginAccessControl
+    Properties:
+      OriginAccessControlConfig:
+        Name: mcm-alerts-s3-oac
+        OriginAccessControlOriginType: s3
+        SigningBehavior: always
+        SigningProtocol: sigv4
+
+  WebAppS3BucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref WebAppS3BucketV2
+      PolicyDocument:
+        Statement:
+          - Sid: CloudFrontRead
+            Effect: Allow
+            Principal:
+              Service: cloudfront.amazonaws.com
+            Action: s3:GetObject
+            Resource: !Sub "arn:aws:s3:::${WebAppS3BucketV2}/*"
+            Condition:
+              StringEquals:
+                "AWS:SourceArn": !Sub "arn:aws:cloudfront::${AWS::AccountId}:distribution/${WebAppCloudFrontDistribution}"
+
+  WebAppCloudFrontDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        DefaultRootObject: index.html
+        Origins:
+          - Id: S3Origin
+            DomainName: !GetAtt WebAppS3BucketV2.RegionalDomainName
+            OriginAccessControlId: !GetAtt WebAppOAC.Id
+            S3OriginConfig: {}
+        DefaultCacheBehavior:
+          TargetOriginId: S3Origin
+          ViewerProtocolPolicy: redirect-to-https
+          AllowedMethods:
+            - GET
+            - HEAD
+            - OPTIONS
+          CachedMethods:
+            - GET
+            - HEAD
+          Compress: true
+          ForwardedValues:
+            QueryString: false
+            Cookies:
+              Forward: none
+        ViewerCertificate:
+          CloudFrontDefaultCertificate: true
+
   # --- Authentication ---
   CognitoUserPool:
     Type: AWS::Cognito::UserPool
@@ -31,6 +88,80 @@ Resources:
       ClientName: mcm-alerts-web-client
       GenerateSecret: false
 
+  CognitoIdentityPool:
+    Type: AWS::Cognito::IdentityPool
+    Properties:
+      IdentityPoolName: !Sub "${AWS::StackName}-IdentityPool"
+      AllowUnauthenticatedIdentities: true
+      CognitoIdentityProviders:
+        - ClientId: !Ref CognitoUserPoolClient
+          ProviderName: !GetAtt CognitoUserPool.ProviderName
+
+  CognitoIdentityPoolRoleAttachment:
+    Type: AWS::Cognito::IdentityPoolRoleAttachment
+    Properties:
+      IdentityPoolId: !Ref CognitoIdentityPool
+      Roles:
+        authenticated: !GetAtt CognitoAuthRole.Arn
+        unauthenticated: !GetAtt CognitoUnauthRole.Arn
+
+  CognitoAuthRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: cognito-identity.amazonaws.com
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                "cognito-identity.amazonaws.com:aud": !Ref CognitoIdentityPool
+              "ForAnyValue:StringLike":
+                "cognito-identity.amazonaws.com:amr": authenticated
+      Policies:
+        - PolicyName: CognitoAuthorizedPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - mobileanalytics:PutEvents
+                  - cognito-sync:*
+                  - cognito-identity:*
+                Resource: "*"
+              - Effect: Allow
+                Action:
+                  - execute-api:Invoke
+                Resource: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${RestApiGateway}/*"
+
+  CognitoUnauthRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: cognito-identity.amazonaws.com
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                "cognito-identity.amazonaws.com:aud": !Ref CognitoIdentityPool
+              "ForAnyValue:StringLike":
+                "cognito-identity.amazonaws.com:amr": unauthenticated
+      Policies:
+        - PolicyName: CognitoUnauthorizedPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - mobileanalytics:PutEvents
+                  - cognito-sync:*
+                Resource: "*"
+
   # --- API Gateways ---
   RestApiGateway:
     Type: AWS::Serverless::Api
@@ -39,7 +170,7 @@ Resources:
       Cors:
         AllowMethods: "'GET,POST,PUT,DELETE,OPTIONS'"
         AllowHeaders: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
-        AllowOrigin: "'*'"
+        AllowOrigin: "''*''"
       Auth:
         DefaultAuthorizer: CognitoAuthorizer
         Authorizers:
@@ -218,6 +349,38 @@ Resources:
             RestApiId: !Ref RestApiGateway
             Auth: { Authorizer: NONE } # Public endpoint
 
+  GetTopicSubscribersInfoLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: DynamoDBAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:Query
+                  - dynamodb:GetItem
+                  - dynamodb:Scan
+                Resource:
+                  - !GetAtt TopicSubscriptionsTable.Arn
+                  - !Sub "${TopicSubscriptionsTable.Arn}/index/*"
+              - Effect: Allow
+                Action:
+                  - dynamodb:GetItem
+                  - dynamodb:BatchGetItem
+                Resource:
+                  - !GetAtt ProfilesTable.Arn
+
   GetTopicSubscribersInfoLambda:
     Type: AWS::Serverless::Function
     Properties:
@@ -225,15 +388,11 @@ Resources:
       Runtime: nodejs18.x
       CodeUri: ./get-topic-subscribers-info-lambda/
       Handler: index.handler
+      Role: !GetAtt GetTopicSubscribersInfoLambdaRole.Arn
       Environment:
         Variables:
           TOPIC_SUBSCRIPTIONS_TABLE: !Ref TopicSubscriptionsTable
           PROFILES_TABLE: !Ref ProfilesTable
-      Policies:
-        - DynamoDBQueryPolicy:
-            TableName: !Ref TopicSubscriptionsTable
-            IndexName: topic_id-index
-        - DynamoDBBatchGetPolicy: { TableName: !Ref ProfilesTable }
       Events:
         ApiEvent:
           Type: Api
@@ -268,7 +427,13 @@ Resources:
     Type: AWS::DynamoDB::Table
     Properties:
       TableName: mcm-alerts-notifications
-      AttributeDefinitions: [{AttributeName: id, AttributeType: S}]
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+        - AttributeName: topic_id
+          AttributeType: S
+        - AttributeName: status
+          AttributeType: S
       KeySchema: [{AttributeName: id, KeyType: HASH}]
       ProvisionedThroughput: {ReadCapacityUnits: 5, WriteCapacityUnits: 5}
       GlobalSecondaryIndexes:
@@ -372,9 +537,15 @@ Outputs:
   UserPoolClientId:
     Description: "ID of the Cognito User Pool Client"
     Value: !Ref CognitoUserPoolClient
+  IdentityPoolId:
+    Description: "ID of the Cognito Identity Pool"
+    Value: !Ref CognitoIdentityPool
   ApiGatewayEndpoint:
     Description: "Endpoint URL for the REST API Gateway"
     Value: !Sub "https://${RestApiGateway}.execute-api.${AWS::Region}.amazonaws.com/prod"
   WebSocketApiEndpoint:
     Description: "Endpoint URL for the WebSocket API"
     Value: !Sub "wss://${WebSocketApi}.execute-api.${AWS::Region}.amazonaws.com/prod"
+  CloudFrontURL:
+    Description: "URL for the CloudFront distribution"
+    Value: !GetAtt WebAppCloudFrontDistribution.DomainName

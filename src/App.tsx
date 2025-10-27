@@ -558,9 +558,7 @@ useEffect(() => {
 }
 
 const AppWrapper = () => (
-  <BrowserRouter>
     <App />
-  </BrowserRouter>
 );
 
 export default AppWrapper;

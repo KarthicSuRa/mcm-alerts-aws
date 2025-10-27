@@ -1,10 +1,12 @@
+
 import {
   CognitoUserPool,
   CognitoUser,
   AuthenticationDetails,
   CognitoUserSession,
 } from 'amazon-cognito-identity-js';
-import AWS from 'aws-sdk';
+import { CognitoIdentityClient } from "@aws-sdk/client-cognito-identity";
+import { fromCognitoIdentityPool } from "@aws-sdk/credential-provider-cognito-identity";
 import { User } from '../types';
 
 // --- Configuration ---
@@ -13,9 +15,10 @@ const COGNITO_CLIENT_ID = import.meta.env.VITE_COGNITO_CLIENT_ID;
 const API_GATEWAY_ENDPOINT = import.meta.env.VITE_API_GATEWAY_ENDPOINT;
 const WEBSOCKET_API_ENDPOINT = import.meta.env.VITE_WEBSOCKET_API_ENDPOINT;
 const AWS_REGION = import.meta.env.VITE_AWS_REGION;
+const IDENTITY_POOL_ID = import.meta.env.VITE_IDENTITY_POOL_ID;
 
-if (!COGNITO_USER_POOL_ID || !COGNITO_CLIENT_ID || !API_GATEWAY_ENDPOINT || !WEBSOCKET_API_ENDPOINT || !AWS_REGION) {
-  throw new Error("Missing AWS configuration. Make sure to set VITE_COGNITO_USER_POOL_ID, VITE_COGNITO_CLIENT_ID, VITE_API_GATEWAY_ENDPOINT, VITE_WEBSOCKET_API_ENDPOINT and VITE_AWS_REGION in your .env file.");
+if (!COGNITO_USER_POOL_ID || !COGNITO_CLIENT_ID || !API_GATEWAY_ENDPOINT || !WEBSOCKET_API_ENDPOINT || !AWS_REGION || !IDENTITY_POOL_ID) {
+  throw new Error("Missing AWS configuration. Make sure to set VITE_COGNITO_USER_POOL_ID, VITE_COGNITO_CLIENT_ID, VITE_API_GATEWAY_ENDPOINT, VITE_WEBSOCKET_API_ENDPOINT, VITE_AWS_REGION and VITE_IDENTITY_POOL_ID in your .env file.");
 }
 
 // --- AWS SDK and Cognito Setup ---
@@ -24,7 +27,7 @@ const userPool = new CognitoUserPool({
   ClientId: COGNITO_CLIENT_ID,
 });
 
-AWS.config.update({ region: AWS_REGION });
+const cognitoClient = new CognitoIdentityClient({ region: AWS_REGION });
 
 // --- Main Client Class ---
 class AWSClient {

@@ -1,0 +1,7 @@
+version = 0.1
+[default.deploy.parameters]
+stack_name = "mcm-alerts-backend-v9"
+region = "eu-north-1"
+capabilities = "CAPABILITY_IAM"
+confirm_changeset = false
+parameter_overrides = "OneSignalAppId=\"b43510ba-d009-4637-becd-7afe89b0516b\" OneSignalRestApiKey=\"os_v2_app_wq2rbowqbfddppwnpl7itmcrnnxsqllgq6ge42nml7j7hac6cxjrx23xr2ja4vjzzndfo7ndqom3n\""
